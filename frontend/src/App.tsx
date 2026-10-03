@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Layers, FileText, Download, Sparkles, CheckCircle2, Cpu, ChevronDown, FileJson } from 'lucide-react';
+import { Layers, FileText, Download, Sparkles, CheckCircle2, Cpu, ChevronDown, FileSpreadsheet } from 'lucide-react';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
@@ -150,15 +150,15 @@ export default function App() {
           </div>
 
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Upload Content JSON</label>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Upload Manuscript / Questions (.json, .xlsx, .csv, .docx, .txt)</label>
             <label className="border-2 border-dashed border-emerald-300 hover:border-emerald-500 bg-emerald-50/30 rounded-2xl p-4 flex flex-col items-center justify-center cursor-pointer">
               <div className="p-2.5 bg-emerald-100 rounded-xl text-emerald-700 mb-2">
-                <FileJson className="w-5 h-5" />
+                <FileSpreadsheet className="w-5 h-5" />
               </div>
               <span className="text-xs font-medium text-slate-700 text-center">
-                {selectedFile ? selectedFile.name : "Drop your book JSON file here or click to browse"}
+                {selectedFile ? selectedFile.name : "Drop file here or click to browse (JSON, Excel, Word, CSV)"}
               </span>
-              <input type="file" accept=".json" onChange={handleFileChange} className="hidden" />
+              <input type="file" accept=".json,.xlsx,.xls,.csv,.docx,.txt" onChange={handleFileChange} className="hidden" />
             </label>
           </div>
 
