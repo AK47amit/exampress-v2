@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { Layers, FileText, Download, Sparkles, CheckCircle2, Cpu, ChevronDown } from 'lucide-react';
 
+// Define backend base URL dynamically (supports local dev & Vercel production)
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+
 export default function App() {
   const [bookType, setBookType] = useState('quiz');
   const [formatSize, setFormatSize] = useState('B5');
@@ -18,7 +21,7 @@ export default function App() {
     formData.append('format_size', formatSize);
 
     try {
-      const response = await fetch('http://localhost:8000/generate-book', {
+      const response = await fetch(`${BACKEND_URL}/generate-book`, {
         method: 'POST',
         body: formData,
       });
@@ -28,17 +31,19 @@ export default function App() {
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
+        // Fixed formatSize camelCase here
         a.download = `exampress_${bookType}_${formatSize}.pdf`;
         document.body.appendChild(a);
         a.click();
         a.remove();
         setSuccess(true);
       } else {
-        alert('Failed to generate book from backend engine.');
+        const errorData = await response.json().catch(() => ({}));
+        alert(`Failed to generate book: ${errorData.detail || 'Server error'}`);
       }
     } catch (err) {
       console.error(err);
-      alert('Error connecting to FastAPI server. Make sure Uvicorn is running.');
+      alert('Error connecting to FastAPI server. Make sure the backend is running.');
     } finally {
       setLoading(false);
     }
