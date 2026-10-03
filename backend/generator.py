@@ -6,7 +6,6 @@ from reportlab.lib import colors
 from reportlab.pdfgen import canvas
 
 class NumberedCanvas(canvas.Canvas):
-    """Canvas for professional running headers and page X of Y numbering."""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.pages = []
@@ -23,30 +22,19 @@ class NumberedCanvas(canvas.Canvas):
                 self.saveState()
                 self.setFont("Helvetica", 8)
                 self.setFillColor(colors.HexColor("#64748b"))
-                
-                # Running Header
                 self.drawString(36, self._pagesize[1] - 25, "Exampress V2 — Production Publishing Engine")
                 self.setStrokeColor(colors.HexColor("#cbd5e1"))
                 self.setLineWidth(0.5)
                 self.line(36, self._pagesize[1] - 30, self._pagesize[0] - 36, self._pagesize[1] - 30)
-                
-                # Running Footer
                 page_text = f"Page {self._pageNumber} of {num_pages}"
                 self.drawRightString(self._pagesize[0] - 36, 20, page_text)
                 self.drawString(36, 20, "Authorized Exampur Publication Copy")
                 self.line(36, 32, self._pagesize[0] - 36, 32)
-                
                 self.restoreState()
             super().showPage()
         super().save()
 
 def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type="quiz", format_size="B5", book_data=None):
-    """
-    Exampress V2 Production Engine:
-    Ingests structured JSON data (book_data), supports A4/B5 formats,
-    generates dynamic cover, question grids, and answer key explanation tables.
-    """
-    # Default fallback sample payload if no JSON is passed
     if not book_data:
         book_data = {
             "title": "Exampur General Studies & Reasoning Masterclass",
@@ -97,7 +85,6 @@ def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type=
 
     story = []
 
-    # Step 4: Dynamic Cover Page & Exampur Branding
     story.append(Spacer(1, 60))
     story.append(Paragraph(book_data.get("publisher", "EXAMPUR PUBLICATION DIVISION"), subtitle_style))
     story.append(Paragraph(f"<b>{book_data.get('title')}</b>", title_style))
@@ -115,7 +102,6 @@ def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type=
     story.append(t_meta)
     story.append(PageBreak())
 
-    # Step 1 & 2: JSON Data Ingestion & Layout Flow
     for chap in book_data.get("chapters", []):
         story.append(Paragraph(chap.get("chapter_title"), heading_style))
         story.append(Spacer(1, 6))
@@ -128,7 +114,6 @@ def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type=
             story.append(Paragraph(opts_html, ParagraphStyle('Opts', parent=body_style, leftIndent=14)))
             story.append(Spacer(1, 6))
 
-    # Step 3: Automated Answer Key & Detailed Explanation Tables
     if book_data.get("answer_key"):
         story.append(PageBreak())
         story.append(Paragraph("Answer Key & Detailed Explanations", heading_style))

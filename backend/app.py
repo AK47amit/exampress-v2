@@ -1,9 +1,11 @@
-from fastapi import FastAPI, Form, Response, HTTPException
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+import json
 import os
 from generator import generate_exampur_book
 
-app = FastAPI(title="Exampress V2 API", version="2.0")
+app = FastAPI(title="Exampress V2 API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -13,42 +15,41 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/")
-def health_check():
-    return {"status": "Exampress V2 Backend is running smoothly!"}
-
 @app.post("/generate-book")
 async def generate_book(
     book_type: str = Form(...),
-    format_size: str = Form(...)
+    format_size: str = Form(...),
+    file: UploadFile = File(None)
 ):
-    output_pdf = None
+    output_pdf = "exampress_final_book.pdf"
     try:
-        # Call generator engine
-        output_pdf = generate_exampur_book(book_type=book_type, format_size=format_size)
-        
-        if not output_pdf or not os.path.exists(output_pdf):
-            raise HTTPException(status_code=500, detail="PDF generation failed to produce output file.")
-        
-        with open(output_pdf, "rb") as f:
-            pdf_bytes = f.read()
-            
-        # Optional: Clean up the generated file from disk after reading into bytes
-        try:
-            os.remove(output_pdf)
-        except Exception:
-            pass
-            
-        return Response(
-            content=pdf_bytes, 
-            media_type="application/pdf", 
-            headers={"Content-Disposition": "attachment; filename=exampress_v2_book.pdf"}
+        book_data = None
+        if file:
+            content = await file.read()
+            try:
+                book_data = json.loads(content.decode("utf-8"))
+            except Exception:
+                raise HTTPException(status_code=400, detail="Invalid JSON format.")
+
+        generate_exampur_book(
+            output_filename=output_pdf,
+            book_type=book_type,
+            format_size=format_size,
+            book_data=book_data
         )
         
+        if os.path.exists(output_pdf):
+            return FileResponse(
+                output_pdf,
+                media_type="application/pdf",
+                filename=f"exampress_{book_type}_{format_size}.pdf"
+            )
+        raise HTTPException(status_code=500, detail="PDF generation failed.")
+        
     except Exception as e:
-        if output_pdf and os.path.exists(output_pdf):
+        if os.path.exists(output_pdf):
             try:
                 os.remove(output_pdf)
-            except Exception:
+            except:
                 pass
         raise HTTPException(status_code=500, detail=str(e))
