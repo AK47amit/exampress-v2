@@ -3,3 +3,5 @@ backend/__pycache__/
 frontend/node_modules/
 .env
 *.pyc
+.vercel
+.env*
