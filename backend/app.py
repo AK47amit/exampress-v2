@@ -5,6 +5,7 @@ from fastapi import FastAPI, UploadFile, File, Form, Response, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from parser import parse_uploaded_file
 from generator import generate_exampur_book
+from archive_parser import extract_and_parse_archive
 
 app = FastAPI(title="Exampress V2 Enterprise API", version="2.5")
 
@@ -39,7 +40,7 @@ async def generate_book(
     try:
         canonical_data = None
         
-        # 1. Handle File Upload and Universal Parsing via parser.py
+        # 1. Handle File Upload and Universal Parsing via parser.py / archive_parser
         if file and file.filename:
             filename = file.filename.lower()
             ext = os.path.splitext(filename)[1]
@@ -50,13 +51,21 @@ async def generate_book(
                 tmp_input_path = tmp_in.name
             
             try:
-                # Normalize raw file into strict Canonical JSON Schema
-                canonical_data = parse_uploaded_file(
-                    file_path=tmp_input_path,
-                    file_extension=ext,
-                    book_type=book_type,
-                    format_size=format_size
-                )
+                # Check for archive types or standard documents
+                if ext in [".zip", ".tar", ".gz"]:
+                    canonical_data = extract_and_parse_archive(
+                        archive_path=tmp_input_path,
+                        book_type=book_type,
+                        format_size=format_size
+                    )
+                else:
+                    # Normalize raw file into strict Canonical JSON Schema
+                    canonical_data = parse_uploaded_file(
+                        file_path=tmp_input_path,
+                        file_extension=ext,
+                        book_type=book_type,
+                        format_size=format_size
+                    )
             except Exception as parse_err:
                 raise HTTPException(status_code=400, detail=f"Universal Parser Error: {str(parse_err)}")
         else:
