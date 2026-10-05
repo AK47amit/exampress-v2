@@ -1,6 +1,6 @@
 import os
 from reportlab.lib.pagesizes import A4, B5
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, KeepTogether
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.pdfgen import canvas
@@ -34,10 +34,45 @@ class NumberedCanvas(canvas.Canvas):
             super().showPage()
         super().save()
 
-def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type="quiz", format_size="B5", book_data=None):
+def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type="quiz", format_size="B5", book_data=None, canonical_data=None):
+    """
+    Enterprise Layout Engine supporting both Canonical JSON data and legacy structures.
+    """
+    # Normalize input: if canonical_data is provided via enterprise parser, map it to book_data format
+    if canonical_data:
+        book_data = {
+            "title": canonical_data.get("title", "Exampress Practice Book"),
+            "publisher": "EXAMPUR PUBLICATION DIVISION",
+            "author": canonical_data.get("author", "Editorial Board (V2 Engine)"),
+            "chapters": []
+        }
+        answer_key_list = []
+        for chap in canonical_data.get("chapters", []):
+            formatted_questions = []
+            for block in chap.get("blocks", []):
+                if block.get("type") == "question":
+                    q_no = block.get("q_no", 1)
+                    formatted_questions.append({
+                        "q_no": q_no,
+                        "question": block.get("text", ""),
+                        "options": block.get("options", [])
+                    })
+                    if block.get("answer") or block.get("explanation"):
+                        answer_key_list.append({
+                            "q": q_no,
+                            "ans": block.get("answer", "A"),
+                            "exp": block.get("explanation", "Verified by editorial board.")
+                        })
+            book_data["chapters"].append({
+                "chapter_title": chap.get("chapter_title", "Chapter"),
+                "questions": formatted_questions
+            })
+        book_data["answer_key"] = answer_key_list
+        format_size = canonical_data.get("format_size", format_size)
+
     if not book_data:
         book_data = {
-            "title": "Exampur General Studies & Reasoning Masterclass",
+            "title": "Exampress General Studies & Reasoning Masterclass",
             "publisher": "EXAMPUR PUBLICATION DIVISION",
             "author": "Editorial Board (V2 Engine)",
             "chapters": [
@@ -91,7 +126,7 @@ def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type=
     story.append(Paragraph(f"Curated & Typeset by {book_data.get('author', 'Exampur Editorial')}", subtitle_style))
     story.append(Spacer(1, 40))
     
-    meta_data = [[Paragraph(f"<b>Format:</b> {format_size} Academic Edition &nbsp;|&nbsp; <b>Engine:</b> Exampress V2.0 300 DPI", meta_style)]]
+    meta_data = [[Paragraph(f"<b>Format:</b> {format_size} Academic Edition &nbsp;|&nbsp; <b>Engine:</b> Exampress V2.0 Enterprise", meta_style)]]
     t_meta = Table(meta_data, colWidths=[printable_width])
     t_meta.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#ecfdf5")),
@@ -119,12 +154,12 @@ def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type=
         story.append(Paragraph("Answer Key & Detailed Explanations", heading_style))
         story.append(Spacer(1, 8))
 
-        table_data = [[Paragraph("<b>Q.No</b>", body_style), Paragraph("<b>Ans</b>", body_style), Paragraph("<b>Detailed Explanation (Exampress AI Verified)</b>", body_style)]]
+        table_data = [[Paragraph("<b>Q.No</b>", body_style), Paragraph("<b>Ans</b>", body_style), Paragraph("<b>Detailed Explanation (Editorial Verified)</b>", body_style)]]
         for item in book_data.get("answer_key", []):
             table_data.append([
                 Paragraph(str(item.get("q")), body_style),
-                Paragraph(item.get("ans"), body_style),
-                Paragraph(item.get("exp"), body_style)
+                Paragraph(str(item.get("ans")), body_style),
+                Paragraph(str(item.get("exp")), body_style)
             ])
 
         ans_table = Table(table_data, colWidths=[40, 50, printable_width - 90])
