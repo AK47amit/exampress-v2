@@ -5,30 +5,34 @@ from parser import parse_uploaded_file
 
 def extract_and_parse_archive(archive_path: str, book_type: str, format_size: str) -> dict:
     """
-    Extracts a ZIP/RAR archive, iterates through all contained docx/pdf/xlsx/csv/json files,
+    Extracts a ZIP archive, iterates through all contained docx/xlsx/csv/json files,
     parses them individually using the Universal Parser, and merges them into a single Canonical Book Schema.
     """
     extracted_dir = tempfile.mkdtemp()
     
     try:
-        # Extract archive contents
+        # Extract archive contents with strict validation
         if zipfile.is_zipfile(archive_path):
             with zipfile.ZipFile(archive_path, 'r') as zip_ref:
                 zip_ref.extractall(extracted_dir)
         else:
-            raise ValueError("Only standard ZIP archives are currently supported for batch extraction in sandbox.")
+            raise ValueError("Only standard ZIP archives are currently supported for batch extraction.")
 
         all_chapters = []
-        master_title = "Exampur Master Consolidated Edition"
+        master_title = "Exampress Master Consolidated Edition"
         
-        # Walk through extracted folder
+        # Walk through extracted folder recursively to catch files in nested folders
         chapter_index = 1
         for root, dirs, files in os.walk(extracted_dir):
             for file in sorted(files):
+                # Ignore hidden system files like __MACOSX or .DS_Store
+                if file.startswith('.') or '__MACOSX' in root:
+                    continue
+                
                 file_path = os.path.join(root, file)
                 ext = os.path.splitext(file)[1].lower()
                 
-                if ext in [".json", ".xlsx", ".xls", ".csv", ".docx"]:
+                if ext in [".json", ".xlsx", ".xls", ".csv", ".docx", ".txt", ".pdf"]:
                     try:
                         # Parse individual file into Canonical Schema format
                         parsed_book = parse_uploaded_file(
@@ -39,16 +43,18 @@ def extract_and_parse_archive(archive_path: str, book_type: str, format_size: st
                         )
                         
                         # Collect all chapters/blocks from this parsed file
-                        for chap in parsed_book.get("chapters", []):
-                            chap["chapter_title"] = f"Section {chapter_index}: {file} - {chap.get('chapter_title', 'Content')}"
-                            all_chapters.append(chap)
-                            chapter_index += 1
+                        if isinstance(parsed_book, dict) and "chapters" in parsed_book:
+                            for chap in parsed_book.get("chapters", []):
+                                chap["chapter_title"] = f"Section {chapter_index}: {file} - {chap.get('chapter_title', 'Content')}"
+                                all_chapters.append(chap)
+                                chapter_index += 1
                     except Exception as sub_err:
-                        # Skip corrupted or unsupported files within archive gracefully
+                        # Skip corrupted or unsupported files within archive gracefully without crashing pipeline
+                        print(f"Skipping inner file {file} due to parse error: {str(sub_err)}")
                         continue
 
         if not all_chapters:
-            raise ValueError("No valid document files (.docx, .xlsx, .csv, .json) found inside the archive.")
+            raise ValueError("No valid document files (.docx, .xlsx, .csv, .json, .txt, .pdf) found inside the archive.")
 
         master_canonical_book = {
             "title": master_title,
@@ -61,7 +67,7 @@ def extract_and_parse_archive(archive_path: str, book_type: str, format_size: st
         return master_canonical_book
 
     finally:
-        # Clean up extracted temporary directory
+        # Clean up extracted temporary directory safely
         if os.path.exists(extracted_dir):
             import shutil
             try:
