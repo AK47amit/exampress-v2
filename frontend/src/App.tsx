@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { Layers, FileText, Download, Sparkles, CheckCircle2, Cpu, ChevronDown, FileSpreadsheet } from 'lucide-react';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+const BACKEND_URL = window.location.hostname === 'localhost' 
+  ? 'http://localhost:8000' 
+  : 'https://exampress-backend.onrender.com';
 
 export default function App() {
   const [bookType, setBookType] = useState('quiz');
