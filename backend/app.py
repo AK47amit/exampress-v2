@@ -9,8 +9,9 @@ from archive_parser import extract_and_parse_archive
 
 app = FastAPI(title="Exampress V2 Enterprise API", version="2.5")
 
-# Restrict CORS for production security (allowing Vercel frontend and local development)
+# Flexible CORS configuration for Vercel production/preview and local development
 origins = [
+    "https://exampressv2.vercel.app",
     "https://exampurv2.vercel.app",
     "http://localhost:5173",
     "http://localhost:3000"
@@ -19,6 +20,7 @@ origins = [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=r"https://exampressv2-.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -40,18 +42,15 @@ async def generate_book(
     try:
         canonical_data = None
         
-        # 1. Handle File Upload and Universal Parsing via parser.py / archive_parser
         if file and file.filename:
             filename = file.filename.lower()
             ext = os.path.splitext(filename)[1]
             
-            # Save uploaded file temporarily to disk for safe parsing
             with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp_in:
                 shutil.copyfileobj(file.file, tmp_in)
                 tmp_input_path = tmp_in.name
             
             try:
-                # Check for archive types or standard documents
                 if ext in [".zip", ".tar", ".gz"]:
                     canonical_data = extract_and_parse_archive(
                         archive_path=tmp_input_path,
@@ -59,7 +58,6 @@ async def generate_book(
                         format_size=format_size
                     )
                 else:
-                    # Normalize raw file into strict Canonical JSON Schema
                     canonical_data = parse_uploaded_file(
                         file_path=tmp_input_path,
                         file_extension=ext,
@@ -69,7 +67,6 @@ async def generate_book(
             except Exception as parse_err:
                 raise HTTPException(status_code=400, detail=f"Universal Parser Error: {str(parse_err)}")
         else:
-            # Fallback mock canonical data if no file is uploaded
             canonical_data = {
                 "title": "Exampress Default Practice Book",
                 "book_type": book_type,
@@ -92,11 +89,9 @@ async def generate_book(
                 ]
             }
 
-        # 2. Concurrency Fix: Create a unique temporary file for output PDF generation
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_out:
             tmp_output_path = tmp_out.name
 
-        # 3. Generate PDF using generator engine with canonical data
         output_pdf = generate_exampur_book(
             output_filename=tmp_output_path,
             canonical_data=canonical_data
@@ -118,7 +113,6 @@ async def generate_book(
         raise HTTPException(status_code=500, detail=f"Enterprise Pipeline Error: {str(e)}")
         
     finally:
-        # Cleanup temporary files safely from disk
         if tmp_input_path and os.path.exists(tmp_input_path):
             try:
                 os.remove(tmp_input_path)
