@@ -3,7 +3,7 @@ from weasyprint import HTML, CSS
 
 def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type="quiz", format_size="B5", book_data=None, canonical_data=None):
     """
-    Enterprise Layout Engine using WeasyPrint for flawless Unicode (Hindi/English) rendering.
+    Enterprise Layout Engine using WeasyPrint with 2-Column Grid & Flawless Devanagari (Hindi/English) Unicode support.
     """
     if canonical_data:
         book_data = {
@@ -59,21 +59,23 @@ def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type=
         }
 
     # Dimensions for B5 vs A4
-    page_css = "@page { size: b5; margin: 20mm; }" if format_size == "B5" else "@page { size: a4; margin: 20mm; }"
+    page_css = "@page { size: b5; margin: 15mm; }" if format_size == "B5" else "@page { size: a4; margin: 15mm; }"
 
-    # Build clean HTML content with robust Unicode font family stack
+    # Build clean HTML content with Google Fonts Noto Sans Devanagari for perfect Hindi & English
     html_content = f"""
     <!DOCTYPE html>
     <html lang="hi">
     <head>
         <meta charset="UTF-8">
         <style>
+            @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;700&display=swap');
+            
             {page_css}
             body {{
-                font-family: 'DejaVu Sans', 'Nirmala UI', Arial, sans-serif;
+                font-family: 'Noto Sans Devanagari', 'DejaVu Sans', Arial, sans-serif;
                 color: #334155;
-                line-height: 1.5;
-                font-size: 11pt;
+                line-height: 1.4;
+                font-size: 9.5pt;
             }}
             .cover {{
                 text-align: center;
@@ -88,7 +90,7 @@ def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type=
                 margin-bottom: 20px;
             }}
             .title {{
-                font-size: 24pt;
+                font-size: 22pt;
                 color: #1e293b;
                 font-weight: bold;
                 margin-bottom: 15px;
@@ -108,29 +110,36 @@ def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type=
                 font-size: 10pt;
             }}
             .chapter-title {{
-                font-size: 14pt;
+                font-size: 13pt;
                 color: #0f172a;
                 font-weight: bold;
                 border-bottom: 2px solid #cbd5e1;
-                padding-bottom: 5px;
-                margin-top: 20px;
-                margin-bottom: 12px;
+                padding-bottom: 4px;
+                margin-top: 15px;
+                margin-bottom: 10px;
                 page-break-before: always;
             }}
+            .questions-container {{
+                column-count: 2;
+                column-gap: 15px;
+                column-fill: auto;
+            }}
             .question {{
-                margin-bottom: 10px;
+                break-inside: avoid;
+                page-break-inside: avoid;
+                margin-bottom: 12px;
             }}
             .q-text {{
                 font-weight: bold;
                 color: #1e293b;
+                margin-bottom: 3px;
             }}
             .options {{
-                margin-left: 20px;
-                margin-top: 4px;
-                margin-bottom: 8px;
+                margin-left: 10px;
             }}
             .option-item {{
-                margin-bottom: 3px;
+                margin-bottom: 2px;
+                color: #475569;
             }}
             .answer-section {{
                 page-break-before: always;
@@ -139,11 +148,11 @@ def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type=
                 width: 100%;
                 border-collapse: collapse;
                 margin-top: 10px;
-                font-size: 10pt;
+                font-size: 9.5pt;
             }}
             th, td {{
                 border: 1px solid #cbd5e1;
-                padding: 8px;
+                padding: 6px 8px;
                 text-align: left;
                 vertical-align: top;
             }}
@@ -160,14 +169,16 @@ def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type=
             <div class="title">{book_data.get('title')}</div>
             <div class="subtitle">Curated & Typeset by {book_data.get('author', 'Exampur Editorial')}</div>
             <div class="meta-box">
-                Format: {format_size} Academic Edition &nbsp;|&nbsp; Engine: Exampry V2.0 WeasyPrint
+                Format: {format_size} Academic Edition &nbsp;|&nbsp; Engine: Exampry V2.0 2-Column WeasyPrint
             </div>
         </div>
     """
 
-    # Chapters & Questions
+    # Chapters & Questions in 2-Column Layout
     for chap in book_data.get("chapters", []):
         html_content += f'<div class="chapter-title">{chap.get("chapter_title")}</div>'
+        html_content += '<div class="questions-container">'
+        
         for q in chap.get("questions", []):
             html_content += f"""
             <div class="question">
@@ -180,6 +191,7 @@ def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type=
                 </div>
             </div>
             """
+        html_content += '</div>'
 
     # Answer Key Table
     if book_data.get("answer_key"):
