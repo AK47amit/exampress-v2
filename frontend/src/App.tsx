@@ -30,10 +30,17 @@ export default function App() {
     }
 
     try {
+      // Create an AbortController to handle long cold-starts for Render backend (90 seconds timeout)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 90000);
+
       const response = await fetch(`${BACKEND_URL}/generate-book`, {
         method: 'POST',
         body: formData,
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (response.ok) {
         const blob = await response.blob();
@@ -49,9 +56,13 @@ export default function App() {
         const errorData = await response.json().catch(() => ({}));
         alert(`Failed to generate book: ${errorData.detail || 'Server error'}`);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert('Error connecting to FastAPI server.');
+      if (err.name === 'AbortError') {
+        alert('Backend request timed out. Render server might be waking up, please try again.');
+      } else {
+        alert('Error connecting to FastAPI server. Check your connection or Brave shields.');
+      }
     } finally {
       setLoading(false);
     }
