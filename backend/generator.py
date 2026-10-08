@@ -4,6 +4,19 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.pdfgen import canvas
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+
+# Register Unicode fonts to prevent black boxes for regional/Hindi/Unicode characters
+try:
+    pdfmetrics.registerFont(TTFont('DejaVuSans', 'DejaVuSans.ttf'))
+    pdfmetrics.registerFont(TTFont('DejaVuSans-Bold', 'DejaVuSans-Bold.ttf'))
+    FONT_NAME = 'DejaVuSans'
+    FONT_NAME_BOLD = 'DejaVuSans-Bold'
+except Exception:
+    # Fallback to standard fonts if TTF files are missing in the environment
+    FONT_NAME = 'Helvetica'
+    FONT_NAME_BOLD = 'Helvetica-Bold'
 
 class NumberedCanvas(canvas.Canvas):
     def __init__(self, *args, **kwargs):
@@ -20,7 +33,7 @@ class NumberedCanvas(canvas.Canvas):
             self.__dict__.update(page)
             if self._pageNumber > 1:
                 self.saveState()
-                self.setFont("Helvetica", 8)
+                self.setFont(FONT_NAME, 8)
                 self.setFillColor(colors.HexColor("#64748b"))
                 self.drawString(36, self._pagesize[1] - 25, "Exampress V2 — Production Publishing Engine")
                 self.setStrokeColor(colors.HexColor("#cbd5e1"))
@@ -112,18 +125,18 @@ def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type=
 
     styles = getSampleStyleSheet()
     
-    title_style = ParagraphStyle('CoverTitle', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=22, textColor=colors.HexColor("#1e293b"), alignment=1, spaceAfter=15)
-    subtitle_style = ParagraphStyle('CoverSubtitle', parent=styles['Normal'], fontName='Helvetica', fontSize=12, textColor=colors.HexColor("#475569"), alignment=1, spaceAfter=20)
-    heading_style = ParagraphStyle('ChapterHeading', parent=styles['Heading2'], fontName='Helvetica-Bold', fontSize=13, textColor=colors.HexColor("#0f172a"), spaceBefore=10, spaceAfter=8)
-    body_style = ParagraphStyle('BookBody', parent=styles['Normal'], fontName='Helvetica', fontSize=10, leading=14, textColor=colors.HexColor("#334155"), spaceAfter=6)
-    meta_style = ParagraphStyle('MetaText', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, textColor=colors.HexColor("#047857"))
+    title_style = ParagraphStyle('CoverTitle', parent=styles['Heading1'], fontName=FONT_NAME_BOLD, fontSize=22, textColor=colors.HexColor("#1e293b"), alignment=1, spaceAfter=15)
+    subtitle_style = ParagraphStyle('CoverSubtitle', parent=styles['Normal'], fontName=FONT_NAME, fontSize=12, textColor=colors.HexColor("#475569"), alignment=1, spaceAfter=20)
+    heading_style = ParagraphStyle('ChapterHeading', parent=styles['Heading2'], fontName=FONT_NAME_BOLD, fontSize=13, textColor=colors.HexColor("#0f172a"), spaceBefore=10, spaceAfter=8)
+    body_style = ParagraphStyle('BookBody', parent=styles['Normal'], fontName=FONT_NAME, fontSize=10, leading=14, textColor=colors.HexColor("#334155"), spaceAfter=6)
+    meta_style = ParagraphStyle('MetaText', parent=styles['Normal'], fontName=FONT_NAME_BOLD, fontSize=9, textColor=colors.HexColor("#047857"))
 
     story = []
 
     story.append(Spacer(1, 60))
     story.append(Paragraph(book_data.get("publisher", "EXAMPUR PUBLICATION DIVISION"), subtitle_style))
     story.append(Paragraph(f"<b>{book_data.get('title')}</b>", title_style))
-    story.append(Paragraph(f"Curated & Typeset by {book_data.get('author', 'Exampur Editorial')}", subtitle_style))
+    story.append(Paragraph(f"Curated & Typeset by {book_data.get('author', 'Exampry Editorial')}", subtitle_style))
     story.append(Spacer(1, 40))
     
     meta_data = [[Paragraph(f"<b>Format:</b> {format_size} Academic Edition &nbsp;|&nbsp; <b>Engine:</b> Exampress V2.0 Enterprise", meta_style)]]
