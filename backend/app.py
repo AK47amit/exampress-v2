@@ -34,6 +34,7 @@ def health_check():
 async def generate_book(
     book_type: str = Form(...),
     format_size: str = Form(...),
+    column_count: int = Form(2),  # <--- Added column_count parameter here!
     file: UploadFile = File(None)
 ):
     tmp_input_path = None
@@ -55,14 +56,16 @@ async def generate_book(
                     canonical_data = extract_and_parse_archive(
                         archive_path=tmp_input_path,
                         book_type=book_type,
-                        format_size=format_size
+                        format_size=format_size,
+                        column_count=column_count
                     )
                 else:
                     canonical_data = parse_uploaded_file(
                         file_path=tmp_input_path,
                         file_extension=ext,
                         book_type=book_type,
-                        format_size=format_size
+                        format_size=format_size,
+                        column_count=column_count  # <--- Passed column_count to parser!
                     )
             except Exception as parse_err:
                 raise HTTPException(status_code=400, detail=f"Universal Parser Error: {str(parse_err)}")
@@ -71,6 +74,7 @@ async def generate_book(
                 "title": "Exampress Default Practice Book",
                 "book_type": book_type,
                 "format_size": format_size,
+                "column_count": column_count,
                 "author": "Exampur Publication Division",
                 "chapters": [
                     {
@@ -94,7 +98,8 @@ async def generate_book(
 
         output_pdf = generate_exampur_book(
             output_filename=tmp_output_path,
-            canonical_data=canonical_data
+            canonical_data=canonical_data,
+            column_count=column_count  # <--- Passed column_count to generator!
         )
         
         if not output_pdf or not os.path.exists(output_pdf):
@@ -106,7 +111,7 @@ async def generate_book(
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename=exampress_{book_type}_{format_size}.pdf"}
+            headers={"Content-Disposition": f"attachment; filename=exampress_{book_type}_{format_size}_{column_count}col.pdf"}
         )
         
     except Exception as e:
