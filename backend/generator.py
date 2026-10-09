@@ -6,6 +6,9 @@ def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type=
     Enterprise Layout Engine using WeasyPrint supporting dynamic column counts (2 or 3) and clean question structure.
     """
     if canonical_data:
+        column_count = int(canonical_data.get("column_count", column_count))
+        format_size = canonical_data.get("format_size", format_size)
+        
         book_data = {
             "title": canonical_data.get("title", "Exampress Practice Book"),
             "publisher": "EXAMPUR PUBLICATION DIVISION",
@@ -36,8 +39,6 @@ def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type=
                 "questions": formatted_questions
             })
         book_data["answer_key"] = answer_key_list
-        format_size = canonical_data.get("format_size", format_size)
-        column_count = int(canonical_data.get("column_count", column_count))
 
     if not book_data:
         book_data = {
