@@ -6,10 +6,12 @@ const BACKEND_URL = 'https://exampress-v2-backend.onrender.com';
 export default function App() {
   const [bookType, setBookType] = useState('quiz');
   const [formatSize, setFormatSize] = useState('B5');
+  const [columnCount, setColumnCount] = useState('2'); // Added Column Count State
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const [isColOpen, setIsColOpen] = useState(false); // Dropdown toggle for columns
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -25,12 +27,12 @@ export default function App() {
     const formData = new FormData();
     formData.append('book_type', bookType);
     formData.append('format_size', formatSize);
+    formData.append('column_count', columnCount); // Sending column count to backend
     if (selectedFile) {
       formData.append('file', selectedFile);
     }
 
     try {
-      // Create an AbortController to handle long cold-starts for Render backend (90 seconds timeout)
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 90000);
 
@@ -47,7 +49,7 @@ export default function App() {
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `exampress_${bookType}_${formatSize}.pdf`;
+        a.download = `exampress_${bookType}_${formatSize}_${columnCount}col.pdf`;
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -130,31 +132,41 @@ export default function App() {
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Page Size Format</label>
-            <div className="relative">
-              <div 
-                onClick={() => setIsOpen(!isOpen)}
-                className="w-full bg-white/90 border border-slate-200 rounded-2xl px-4 py-3.5 text-slate-700 text-sm flex items-center justify-between cursor-pointer"
-              >
-                <span className="font-medium">
-                  {formatSize === 'B5' ? 'B5 Academic Size (Competitive Books)' : 'A4 Standard Format (Comprehensive Guides)'}
-                </span>
-                <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isOpen ? 'rotate-180 text-emerald-600' : ''}`} />
-              </div>
-
-              <div className={`absolute top-full left-0 right-0 mt-2 bg-white/95 border border-emerald-100 rounded-2xl shadow-xl overflow-hidden z-20 ${isOpen ? 'block' : 'hidden'}`}>
+          <div className="grid grid-cols-2 gap-4">
+            {/* Page Size Format */}
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Page Size</label>
+              <div className="relative">
                 <div 
-                  onClick={() => { setFormatSize('B5'); setIsOpen(false); }}
-                  className="px-4 py-3.5 text-sm cursor-pointer hover:bg-emerald-50"
+                  onClick={() => setIsOpen(!isOpen)}
+                  className="w-full bg-white/90 border border-slate-200 rounded-2xl px-4 py-3.5 text-slate-700 text-sm flex items-center justify-between cursor-pointer"
                 >
-                  B5 Academic Size (Competitive Books)
+                  <span className="font-medium truncate">{formatSize} Size</span>
+                  <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isOpen ? 'rotate-180 text-emerald-600' : ''}`} />
                 </div>
+
+                <div className={`absolute top-full left-0 right-0 mt-2 bg-white/95 border border-emerald-100 rounded-2xl shadow-xl overflow-hidden z-20 ${isOpen ? 'block' : 'hidden'}`}>
+                  <div onClick={() => { setFormatSize('B5'); setIsOpen(false); }} className="px-4 py-3 text-sm cursor-pointer hover:bg-emerald-50">B5 Academic</div>
+                  <div onClick={() => { setFormatSize('A4'); setIsOpen(false); }} className="px-4 py-3 text-sm cursor-pointer hover:bg-emerald-50">A4 Standard</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Column Count Selector */}
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Column Grid</label>
+              <div className="relative">
                 <div 
-                  onClick={() => { setFormatSize('A4'); setIsOpen(false); }}
-                  className="px-4 py-3.5 text-sm cursor-pointer hover:bg-emerald-50"
+                  onClick={() => setIsColOpen(!isColOpen)}
+                  className="w-full bg-white/90 border border-slate-200 rounded-2xl px-4 py-3.5 text-slate-700 text-sm flex items-center justify-between cursor-pointer"
                 >
-                  A4 Standard Format (Comprehensive Guides)
+                  <span className="font-medium truncate">{columnCount} Columns</span>
+                  <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isColOpen ? 'rotate-180 text-emerald-600' : ''}`} />
+                </div>
+
+                <div className={`absolute top-full left-0 right-0 mt-2 bg-white/95 border border-emerald-100 rounded-2xl shadow-xl overflow-hidden z-20 ${isColOpen ? 'block' : 'hidden'}`}>
+                  <div onClick={() => { setColumnCount('2'); setIsColOpen(false); }} className="px-4 py-3 text-sm cursor-pointer hover:bg-emerald-50">2 Columns (Standard)</div>
+                  <div onClick={() => { setColumnCount('3'); setIsColOpen(false); }} className="px-4 py-3 text-sm cursor-pointer hover:bg-emerald-50">3 Columns (Compact)</div>
                 </div>
               </div>
             </div>
@@ -167,7 +179,7 @@ export default function App() {
                 <FileSpreadsheet className="w-5 h-5" />
               </div>
               <span className="text-xs font-medium text-slate-700 text-center">
-                {selectedFile ? selectedFile.name : "Drop file here or click to browse (JSON, Excel, Word, CSV, ZIP, RAR)"}
+                {selectedFile ? selectedFile.name : "Drop file here or click to browse"}
               </span>
               <input type="file" accept=".json,.xlsx,.xls,.csv,.docx,.txt,.zip,.rar" onChange={handleFileChange} className="hidden" />
             </label>
