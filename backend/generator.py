@@ -4,8 +4,10 @@ from weasyprint import HTML, CSS
 def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type="quiz", format_size="B5", book_data=None, canonical_data=None, column_count=2):
     """
     Enterprise Layout Engine using WeasyPrint supporting dynamic column counts (2 or 3),
-    clean question structures, and Specialized Book Type Templates (Section 3.2).
+    clean question structures, Specialized Book Type Templates (Section 3.2),
+    and Robust Canonical Data Pipeline Integration (Section 3.4).
     """
+    # Section 3.4: Robust Pipeline Integration from Canonical Model
     if canonical_data:
         column_count = int(canonical_data.get("column_count", column_count))
         format_size = canonical_data.get("format_size", format_size)
@@ -91,7 +93,7 @@ def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type=
     theme_accent = "#047857" if book_type == "quiz" else ("#1d4ed8" if book_type == "theory" else "#b91c1c")
     theme_bg = "#ecfdf5" if book_type == "quiz" else ("#eff6ff" if book_type == "theory" else "#fef2f2")
 
-    # Build clean HTML content with specialized book type styles
+    # Build clean HTML content with multi-column and specialized styles
     html_content = f"""
     <!DOCTYPE html>
     <html lang="hi">
@@ -222,12 +224,12 @@ def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type=
             <div class="title">{book_data.get('title')}</div>
             <div class="subtitle">Curated & Typeset by {book_data.get('author', 'Exampur Editorial')}</div>
             <div class="meta-box">
-                Mode: {book_type.upper()} &nbsp;|&nbsp; Format: {format_size} &nbsp;|&nbsp; Columns: {column_count} &nbsp;|&nbsp; Engine: V2 Enterprise
+                Mode: {book_type.upper()} &nbsp;|&nbsp; Format: {format_size} &nbsp;|&nbsp; Columns: {column_count} &nbsp;|&nbsp; Engine: V2 Enterprise Pipeline
             </div>
         </div>
     """
 
-    # Chapters & Questions
+    # Chapters & Questions Rendering
     for chap in book_data.get("chapters", []):
         html_content += f'<div class="chapter-title">{chap.get("chapter_title")}</div>'
         html_content += '<div class="questions-container">'
@@ -251,7 +253,7 @@ def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type=
             html_content += "</div>"
         html_content += '</div>'
 
-    # Answer Key Table
+    # Answer Key Table Rendering
     if book_data.get("answer_key"):
         html_content += """
         <div class="answer-section">
