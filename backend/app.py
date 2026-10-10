@@ -5,7 +5,7 @@ import base64
 import zipfile
 import uuid
 from datetime import timedelta
-from fastapi import FastAPI, UploadFile, File, Form, Response, HTTPException, Depends, status, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, Form, Response, HTTPException, Depends, status, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
@@ -15,6 +15,9 @@ from parser import parse_uploaded_file
 from generator import generate_exampur_book
 from archive_parser import extract_and_parse_archive
 from idml_generator import IDMLGenerator  # Phase 7: Adobe IDML Interchange Generator
+from monitoring import init_sentry, logger  # Phase 8.2: Sentry Error Tracking & Logging
+from security import limiter, rate_limit_handler  # Phase 8.3: Security Rate Limiting
+from slowapi.errors import RateLimitExceeded
 
 # SaaS Foundations Imports (Phase 5)
 from database import engine, get_db
@@ -29,7 +32,14 @@ except ImportError:
 # Automatically create database tables on startup if they don't exist
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Exampress V2 Enterprise SaaS API", version="3.0")
+app = FastAPI(title="Exampress V2 Enterprise SaaS API", version="3.2")
+
+# Initialize Sentry Monitoring & Structured Logging (Phase 8.2)
+init_sentry(app)
+
+# Initialize Rate Limiter State & Exception Handler (Phase 8.3)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 
 # Flexible CORS configuration for Vercel production/preview and local development
 origins = [
@@ -64,9 +74,11 @@ class ProjectSaveRequest(BaseModel):
     canonical_data: dict
 
 
-# Section 4.3 & Phase 5/7: End-to-End Health & SaaS Status Endpoint
+# Section 4.3 & Phase 5/7/8: End-to-End Health & SaaS Status Endpoint
 @app.get("/")
-def health_check():
+@limiter.limit("60/minute")
+def health_check(request: Request):
+    logger.info("Health check endpoint accessed.")
     return {
         "status": "Exampress V2 Enterprise SaaS Backend is running successfully!",
         "pipeline_status": "Active",
@@ -77,7 +89,9 @@ def health_check():
             "pdf_preview": "Operational" if fitz else "Degraded (PyMuPDF missing)",
             "saas_auth_database": "Operational",
             "async_background_jobs": "Operational",
-            "adobe_idml_interchange": "Operational"
+            "adobe_idml_interchange": "Operational",
+            "sentry_monitoring": "Operational",
+            "security_rate_limiting": "Operational"
         }
     }
 
@@ -85,10 +99,12 @@ def health_check():
 # --- PHASE 5: USER AUTHENTICATION & PROJECT MANAGEMENT ENDPOINTS ---
 
 @app.post("/api/v2/auth/register")
-def register_user(user_data: UserCreate, db = Depends(get_db)):
-    """Registers a new user in the enterprise SaaS database."""
+@limiter.limit("10/minute")
+def register_user(request: Request, user_data: UserCreate, db = Depends(get_db)):
+    """Registers a new user in the enterprise SaaS database with rate limiting."""
     existing_user = db.query(User).filter(User.email == user_data.email).first()
     if existing_user:
+        logger.warning(f"Registration failed: Email already exists - {user_data.email}")
         raise HTTPException(status_code=400, detail="Email is already registered.")
     
     hashed_pwd = get_password_hash(user_data.password)
@@ -97,14 +113,17 @@ def register_user(user_data: UserCreate, db = Depends(get_db)):
     db.commit()
     db.refresh(new_user)
     
+    logger.info(f"New user registered successfully: {user_data.email}")
     return {"status": "success", "message": "User registered successfully", "user_id": new_user.id}
 
 
 @app.post("/api/v2/auth/login")
-def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db = Depends(get_db)):
-    """Authenticates user credentials and issues a secure JWT access token."""
+@limiter.limit("20/minute")
+def login_for_access_token(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db = Depends(get_db)):
+    """Authenticates user credentials and issues a secure JWT access token with rate limiting."""
     user = db.query(User).filter(User.email == form_data.username).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
+        logger.warning(f"Authentication failed for user: {form_data.username}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
@@ -115,11 +134,13 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db 
     access_token = create_access_data_token(
         data={"sub": user.email}, expires_delta=access_token_expires
     )
+    logger.info(f"User logged in successfully: {user.email}")
     return {"access_token": access_token, "token_type": "bearer"}
 
 
 @app.post("/api/v2/projects")
-def save_user_project(project: ProjectSaveRequest, current_user: User = Depends(get_current_user), db = Depends(get_db)):
+@limiter.limit("30/minute")
+def save_user_project(request: Request, project: ProjectSaveRequest, current_user: User = Depends(get_current_user), db = Depends(get_db)):
     """Saves a generated book project securely to the authenticated user's profile vault."""
     new_project = Project(
         title=project.title,
@@ -133,6 +154,7 @@ def save_user_project(project: ProjectSaveRequest, current_user: User = Depends(
     db.commit()
     db.refresh(new_project)
     
+    logger.info(f"Project '{project.title}' saved to vault for user: {current_user.email}")
     return {
         "status": "success",
         "message": "Project saved successfully to SaaS vault.",
@@ -167,8 +189,8 @@ job_status_store = {}
 def background_generate_book_task(job_id: str, book_type: str, format_size: str, column_count: int, canonical_data: dict, output_path: str):
     try:
         job_status_store[job_id] = {"status": "processing", "progress": 50}
+        logger.info(f"Background Job {job_id}: Starting PDF generation...")
         
-        # Execute typesetting & PDF generation
         generate_output = generate_exampur_book(
             output_filename=output_path,
             canonical_data=canonical_data,
@@ -177,14 +199,19 @@ def background_generate_book_task(job_id: str, book_type: str, format_size: str,
         
         if generate_output and os.path.exists(output_path):
             job_status_store[job_id] = {"status": "completed", "file_path": output_path}
+            logger.info(f"Background Job {job_id}: Completed successfully.")
         else:
             job_status_store[job_id] = {"status": "failed", "error": "PDF generation failed to produce output file."}
+            logger.error(f"Background Job {job_id}: Failed to produce output.")
             
     except Exception as e:
         job_status_store[job_id] = {"status": "failed", "error": str(e)}
+        logger.exception(f"Background Job {job_id} encountered an exception: {str(e)}")
 
 @app.post("/api/v2/generate-async")
+@limiter.limit("15/minute")
 async def generate_book_async(
+    request: Request,
     background_tasks: BackgroundTasks,
     book_type: str = Form("quiz"),
     format_size: str = Form("B5"),
@@ -232,6 +259,7 @@ async def generate_book_async(
         output_path=output_pdf_path
     )
     
+    logger.info(f"Queued background generation job {job_id} for user {current_user.email}")
     return {
         "status": "success",
         "message": "Book generation queued successfully in background.",
@@ -251,7 +279,9 @@ def check_job_status(job_id: str, current_user: User = Depends(get_current_user)
 # --- PHASE 7: ADOBE IDML INTERCHANGE EXPORT ENDPOINT ---
 
 @app.post("/api/v2/export-idml")
+@limiter.limit("10/minute")
 async def export_book_idml(
+    request: Request,
     book_type: str = Form("quiz"),
     format_size: str = Form("B5"),
     column_count: int = Form(2),
@@ -294,6 +324,7 @@ async def export_book_idml(
         with open(output_file, "rb") as f:
             idml_bytes = f.read()
             
+        logger.info(f"IDML package exported successfully for user {current_user.email}")
         return Response(
             content=idml_bytes,
             media_type="application/vnd.adobe.indesign-idml-package",
@@ -301,6 +332,7 @@ async def export_book_idml(
         )
         
     except Exception as e:
+        logger.exception(f"IDML Pipeline Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"IDML Pipeline Error: {str(e)}")
         
     finally:
@@ -314,7 +346,9 @@ async def export_book_idml(
 # --- EXISTING CORE GENERATION & PREVIEW ENDPOINTS ---
 
 @app.post("/generate-book")
+@limiter.limit("20/minute")
 async def generate_book(
+    request: Request,
     book_type: str = Form(...),
     format_size: str = Form(...),
     column_count: int = Form(2),
@@ -358,6 +392,7 @@ async def generate_book(
                         column_count=column_count
                     )
             except Exception as parse_err:
+                logger.error(f"Parser error during generation: {str(parse_err)}")
                 raise HTTPException(status_code=400, detail=f"Universal Parser Error: {str(parse_err)}")
         else:
             canonical_data = {
@@ -398,6 +433,7 @@ async def generate_book(
         with open(output_pdf, "rb") as f:
             pdf_bytes = f.read()
             
+        logger.info(f"Book generated successfully: {book_type} ({format_size})")
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
@@ -407,6 +443,7 @@ async def generate_book(
     except HTTPException as he:
         raise he
     except Exception as e:
+        logger.exception(f"Enterprise Pipeline Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Enterprise Pipeline Error: {str(e)}")
         
     finally:
@@ -424,7 +461,8 @@ async def generate_book(
 
 # Phase 4.1: PDF Preview & Thumbnail Generator Endpoint
 @app.post("/api/v2/preview-pdf")
-async def preview_generated_pdf(file: UploadFile = File(...)):
+@limiter.limit("30/minute")
+async def preview_generated_pdf(request: Request, file: UploadFile = File(...)):
     """
     Converts the first page of the generated or uploaded PDF into a high-quality base64 PNG thumbnail 
     for real-time visual review in the frontend dashboard.
@@ -456,6 +494,7 @@ async def preview_generated_pdf(file: UploadFile = File(...)):
         })
         
     except Exception as e:
+        logger.exception(f"PDF Preview Generation Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"PDF Preview Generation Error: {str(e)}")
         
     finally:
@@ -468,7 +507,9 @@ async def preview_generated_pdf(file: UploadFile = File(...)):
 
 # Phase 4.2 & 4.3: Export & Download Manager with Full Pipeline Verification
 @app.post("/api/v2/batch-export")
+@limiter.limit("10/minute")
 async def batch_export_books(
+    request: Request,
     book_type: str = Form("quiz"),
     format_size: str = Form("B5"),
     column_count: int = Form(2),
@@ -521,13 +562,15 @@ async def batch_export_books(
             for pdf_p in generated_pdfs:
                 zip_ref.write(pdf_p, arcname=os.path.basename(pdf_p))
                 
+        logger.info(f"Batch export completed successfully with {len(generated_pdfs)} books.")
         return Response(
             content=open(zip_output_path, "rb").read(),
             media_type="application/zip",
             headers={"Content-Disposition": f"attachment; filename=exampress_batch_export_{book_type}.zip"}
         )
         
-    except:
+    except Exception as e:
+        logger.exception(f"Batch Export Pipeline Error: {str(e)}")
         raise HTTPException(status_code=500, detail="Batch Export Pipeline Error")
         
     finally:
