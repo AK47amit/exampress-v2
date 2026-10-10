@@ -30,7 +30,7 @@ class Chapter(BaseModel):
         
         q_numbers = [b.q_no for b in blocks]
         
-        # Check for duplicate question numbers
+        # Check for duplicate question numbers to maintain strict identity preservation
         if len(q_numbers) != len(set(q_numbers)):
             raise ValueError("Validation Error: Duplicate question numbers detected in chapter sequence.")
             
@@ -78,7 +78,7 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
                 explanation = str(row.get('explanation', ''))
                 blocks.append(QuestionBlock(q_no=q_no, text=text, options=options, answer=answer, explanation=explanation))
                 
-            chapter = Chapter(chapter_title="Chapter 1: Imported Question Bank", blocks=blocks)
+            chapter = Chapter(chapter_title="Chapter 1: Imported Question Bank (Verified)", blocks=blocks)
             book = CanonicalBookSchema(
                 title="Imported Dataset Book", 
                 book_type=book_type, 
@@ -151,7 +151,7 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
                     answer="A", explanation="Auto-generated explanation."
                 ))
                 
-            chapter = Chapter(chapter_title="Chapter 1: PDF Document Import", blocks=blocks)
+            chapter = Chapter(chapter_title="Chapter 1: PDF Document Import (Structured)", blocks=blocks)
             book = CanonicalBookSchema(
                 title="Imported PDF Book", 
                 book_type=book_type, 
@@ -218,7 +218,7 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
                     answer="A", explanation="Auto-generated explanation."
                 ))
                 
-            chapter = Chapter(chapter_title="Chapter 1: Word Document Import", blocks=blocks)
+            chapter = Chapter(chapter_title="Chapter 1: Word Document Import (Structured)", blocks=blocks)
             book = CanonicalBookSchema(
                 title="Imported Word Document Book", 
                 book_type=book_type, 
@@ -232,4 +232,4 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
             raise ValueError(f"Unsupported file extension: {ext}")
             
     except Exception as err:
-        raise ValueError(f"Canonical Parser & Validation Error: {str(err)}")
+        raise ValueError(f"Canonical Parser & Source Identity Error: {str(err)}")
