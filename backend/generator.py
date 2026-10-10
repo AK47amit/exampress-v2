@@ -3,11 +3,13 @@ from weasyprint import HTML, CSS
 
 def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type="quiz", format_size="B5", book_data=None, canonical_data=None, column_count=2):
     """
-    Enterprise Layout Engine using WeasyPrint supporting dynamic column counts (2 or 3) and clean question structure.
+    Enterprise Layout Engine using WeasyPrint supporting dynamic column counts (2 or 3),
+    clean question structures, and Specialized Book Type Templates (Section 3.2).
     """
     if canonical_data:
         column_count = int(canonical_data.get("column_count", column_count))
         format_size = canonical_data.get("format_size", format_size)
+        book_type = canonical_data.get("book_type", book_type)
         
         book_data = {
             "title": canonical_data.get("title", "Exampress Practice Book"),
@@ -64,10 +66,32 @@ def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type=
             ]
         }
 
-    # Dimensions for B5 vs A4
-    page_css = "@page { size: b5; margin: 15mm; }" if format_size == "B5" else "@page { size: a4; margin: 15mm; }"
+    # Dimensions and running footers/headers for B5 vs A4
+    page_size_val = "b5" if format_size.upper() == "B5" else "a4"
+    page_css = f"""
+        @page {{
+            size: {page_size_val};
+            margin: 15mm;
+            @bottom-right {{
+                content: "Page " counter(page) " of " counter(pages);
+                font-family: 'Noto Sans Devanagari', 'DejaVu Sans', Arial, sans-serif;
+                font-size: 8pt;
+                color: #64748b;
+            }}
+            @bottom-left {{
+                content: "Exampur Publication Division — {book_type.upper()} Enterprise Edition";
+                font-family: 'Noto Sans Devanagari', 'DejaVu Sans', Arial, sans-serif;
+                font-size: 8pt;
+                color: #64748b;
+            }}
+        }}
+    """
 
-    # Build clean HTML content with dynamic column count support
+    # Specialized Template Theme based on book_type (Section 3.2)
+    theme_accent = "#047857" if book_type == "quiz" else ("#1d4ed8" if book_type == "theory" else "#b91c1c")
+    theme_bg = "#ecfdf5" if book_type == "quiz" else ("#eff6ff" if book_type == "theory" else "#fef2f2")
+
+    # Build clean HTML content with specialized book type styles
     html_content = f"""
     <!DOCTYPE html>
     <html lang="hi">
@@ -90,7 +114,7 @@ def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type=
             }}
             .publisher {{
                 font-size: 12pt;
-                color: #475569;
+                color: {theme_accent};
                 font-weight: bold;
                 text-transform: uppercase;
                 margin-bottom: 20px;
@@ -107,11 +131,11 @@ def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type=
             }}
             .meta-box {{
                 margin-top: 40px;
-                background-color: #ecfdf5;
-                border: 1px solid #6ee7b7;
+                background-color: {theme_bg};
+                border: 1px solid {theme_accent};
                 padding: 12px;
                 text-align: center;
-                color: #047857;
+                color: {theme_accent};
                 font-weight: bold;
                 font-size: 10pt;
             }}
@@ -119,7 +143,7 @@ def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type=
                 font-size: 12pt;
                 color: #0f172a;
                 font-weight: bold;
-                border-bottom: 2px solid #cbd5e1;
+                border-bottom: 2px solid {theme_accent};
                 padding-bottom: 4px;
                 margin-top: 15px;
                 margin-bottom: 10px;
@@ -129,19 +153,26 @@ def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type=
                 column-count: {column_count};
                 column-gap: 12px;
                 column-fill: auto;
+                orphans: 3;
+                widows: 3;
             }}
             .question-box {{
                 break-inside: avoid;
                 page-break-inside: avoid;
                 margin-bottom: 10px;
+                background: #fff;
+                border: 1px solid #e2e8f0;
+                border-left: 3px solid {theme_accent};
+                padding: 6px 8px;
+                border-radius: 4px;
             }}
             .q-text {{
                 font-weight: bold;
                 color: #0f172a;
-                margin-bottom: 3px;
+                margin-bottom: 4px;
             }}
             .options-grid {{
-                margin-left: 8px;
+                margin-left: 4px;
                 margin-bottom: 4px;
             }}
             .option-row {{
@@ -150,8 +181,18 @@ def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type=
             }}
             .answer-text {{
                 font-weight: bold;
-                color: #047857;
+                color: {theme_accent};
                 margin-top: 2px;
+                font-size: 8.5pt;
+            }}
+            .explanation-box {{
+                margin-top: 4px;
+                font-size: 8pt;
+                color: #475569;
+                background: #f8fafc;
+                padding: 3px 6px;
+                border-radius: 3px;
+                border-left: 2px solid #cbd5e1;
             }}
             .answer-section {{
                 page-break-before: always;
@@ -181,7 +222,7 @@ def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type=
             <div class="title">{book_data.get('title')}</div>
             <div class="subtitle">Curated & Typeset by {book_data.get('author', 'Exampur Editorial')}</div>
             <div class="meta-box">
-                Format: {format_size} Academic Edition &nbsp;|&nbsp; Columns: {column_count} &nbsp;|&nbsp; Engine: Exampry V2
+                Mode: {book_type.upper()} &nbsp;|&nbsp; Format: {format_size} &nbsp;|&nbsp; Columns: {column_count} &nbsp;|&nbsp; Engine: V2 Enterprise
             </div>
         </div>
     """
@@ -204,6 +245,9 @@ def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type=
             if q.get('answer'):
                 html_content += f'<div class="answer-text">Answer: {q.get("answer")}</div>'
             
+            if book_type == "solutions" and q.get('explanation'):
+                html_content += f'<div class="explanation-box">Exp: {q.get("explanation")}</div>'
+            
             html_content += "</div>"
         html_content += '</div>'
 
@@ -216,7 +260,7 @@ def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type=
                 <thead>
                     <tr>
                         <th style="width: 40px;">Q.No</th>
-                        <th style="width: 60px;">Ans</th>
+                        <th style="width: 80px;">Ans</th>
                         <th>Detailed Explanation (Editorial Verified)</th>
                     </tr>
                 </thead>
