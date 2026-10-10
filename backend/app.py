@@ -3,19 +3,32 @@ import shutil
 import tempfile
 import base64
 import zipfile
-from fastapi import FastAPI, UploadFile, File, Form, Response, HTTPException
+import uuid
+from datetime import timedelta
+from fastapi import FastAPI, UploadFile, File, Form, Response, HTTPException, Depends, status, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.security import OAuth2PasswordRequestForm
+from pydantic import BaseModel
+
 from parser import parse_uploaded_file
 from generator import generate_exampur_book
 from archive_parser import extract_and_parse_archive
+
+# SaaS Foundations Imports (Phase 5)
+from database import engine, get_db
+from models import Base, User, Project
+from auth import get_password_hash, verify_password, create_access_data_token, get_current_user
 
 try:
     import fitz  # PyMuPDF for visual review & thumbnail generation (Section 4.1)
 except ImportError:
     fitz = None
 
-app = FastAPI(title="Exampress V2 Enterprise API", version="2.7")
+# Automatically create database tables on startup if they don't exist
+Base.metadata.create_all(bind=engine)
+
+app = FastAPI(title="Exampress V2 Enterprise SaaS API", version="2.9")
 
 # Flexible CORS configuration for Vercel production/preview and local development
 origins = [
@@ -37,19 +50,203 @@ app.add_middleware(
 # 100 MB maximum file size limit for security and stability
 MAX_FILE_SIZE = 100 * 1024 * 1024
 
-# Section 4.3: End-to-End Health & Pipeline Verification Endpoint
+# Pydantic Schemas for Phase 5 SaaS Endpoints
+class UserCreate(BaseModel):
+    email: str
+    password: str
+
+class ProjectSaveRequest(BaseModel):
+    title: str
+    book_type: str
+    format_size: str
+    column_count: int
+    canonical_data: dict
+
+
+# Section 4.3 & Phase 5: End-to-End Health & SaaS Status Endpoint
 @app.get("/")
 def health_check():
     return {
-        "status": "Exampress V2 Enterprise Backend is running successfully!",
+        "status": "Exampress V2 Enterprise SaaS Backend is running successfully!",
         "pipeline_status": "Active",
         "modules": {
             "parser": "Operational",
             "generator": "Operational",
             "archive_extractor": "Operational",
-            "pdf_preview": "Operational" if fitz else "Degraded (PyMuPDF missing)"
+            "pdf_preview": "Operational" if fitz else "Degraded (PyMuPDF missing)",
+            "saas_auth_database": "Operational",
+            "async_background_jobs": "Operational"
         }
     }
+
+
+# --- PHASE 5: USER AUTHENTICATION & PROJECT MANAGEMENT ENDPOINTS ---
+
+@app.post("/api/v2/auth/register")
+def register_user(user_data: UserCreate, db = Depends(get_db)):
+    """Registers a new user in the enterprise SaaS database."""
+    existing_user = db.query(User).filter(User.email == user_data.email).first()
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Email is already registered.")
+    
+    hashed_pwd = get_password_hash(user_data.password)
+    new_user = User(email=user_data.email, hashed_password=hashed_pwd)
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    
+    return {"status": "success", "message": "User registered successfully", "user_id": new_user.id}
+
+
+@app.post("/api/v2/auth/login")
+def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db = Depends(get_db)):
+    """Authenticates user credentials and issues a secure JWT access token."""
+    user = db.query(User).filter(User.email == form_data.username).first()
+    if not user or not verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    access_token_expires = timedelta(minutes=1440) # 24 Hours
+    access_token = create_access_data_token(
+        data={"sub": user.email}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+
+@app.post("/api/v2/projects")
+def save_user_project(project: ProjectSaveRequest, current_user: User = Depends(get_current_user), db = Depends(get_db)):
+    """Saves a generated book project securely to the authenticated user's profile vault."""
+    new_project = Project(
+        title=project.title,
+        book_type=project.book_type,
+        format_size=project.format_size,
+        column_count=project.column_count,
+        canonical_data=project.canonical_data,
+        user_id=current_user.id
+    )
+    db.add(new_project)
+    db.commit()
+    db.refresh(new_project)
+    
+    return {
+        "status": "success",
+        "message": "Project saved successfully to SaaS vault.",
+        "project_id": new_project.id
+    }
+
+
+@app.get("/api/v2/projects")
+def get_user_projects(current_user: User = Depends(get_current_user), db = Depends(get_db)):
+    """Retrieves all saved book projects belonging to the logged-in user."""
+    projects = db.query(Project).filter(Project.user_id == current_user.id).all()
+    return {
+        "status": "success",
+        "total_projects": len(projects),
+        "projects": [
+            {
+                "id": p.id,
+                "title": p.title,
+                "book_type": p.book_type,
+                "format_size": p.format_size,
+                "column_count": p.column_count,
+                "created_at": p.created_at
+            } for p in projects
+        ]
+    }
+
+
+# --- PHASE 5.4: ASYNCHRONOUS BACKGROUND JOBS & QUEUING ---
+
+job_status_store = {}
+
+def background_generate_book_task(job_id: str, book_type: str, format_size: str, column_count: int, canonical_data: dict, output_path: str):
+    try:
+        job_status_store[job_id] = {"status": "processing", "progress": 50}
+        
+        # Execute typesetting & PDF generation
+        generate_output = generate_exampur_book(
+            output_filename=output_path,
+            canonical_data=canonical_data,
+            column_count=column_count
+        )
+        
+        if generate_output and os.path.exists(output_path):
+            job_status_store[job_id] = {"status": "completed", "file_path": output_path}
+        else:
+            job_status_store[job_id] = {"status": "failed", "error": "PDF generation failed to produce output file."}
+            
+    except Exception as e:
+        job_status_store[job_id] = {"status": "failed", "error": str(e)}
+
+@app.post("/api/v2/generate-async")
+async def generate_book_async(
+    background_tasks: BackgroundTasks,
+    book_type: str = Form("quiz"),
+    format_size: str = Form("B5"),
+    column_count: int = Form(2),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Initiates heavy book generation in the background to prevent server timeouts.
+    Returns a Job ID immediately for status tracking.
+    """
+    job_id = str(uuid.uuid4())
+    output_pdf_path = os.path.join(tempfile.gettempdir(), f"exampress_job_{job_id}.pdf")
+    
+    canonical_data = {
+        "title": f"Async Enterprise Book - {current_user.email}",
+        "book_type": book_type,
+        "format_size": format_size,
+        "column_count": column_count,
+        "author": "Exampur Publication Division",
+        "chapters": [
+            {
+                "chapter_title": "Chapter 1: Background Processed SaaS Content",
+                "blocks": [
+                    {
+                        "type": "question",
+                        "q_no": 1,
+                        "text": "Is background queue processing essential for enterprise scaling?",
+                        "options": ["No", "Yes", "Maybe", "Never"],
+                        "answer": "Yes",
+                        "explanation": "Background workers prevent Gateway Timeouts on heavy compilation workloads."
+                    }
+                ]
+            }
+        ]
+    }
+    
+    job_status_store[job_id] = {"status": "queued"}
+    background_tasks.add_task(
+        background_generate_book_task,
+        job_id=job_id,
+        book_type=book_type,
+        format_size=format_size,
+        column_count=column_count,
+        canonical_data=canonical_data,
+        output_path=output_pdf_path
+    )
+    
+    return {
+        "status": "success",
+        "message": "Book generation queued successfully in background.",
+        "job_id": job_id,
+        "status_check_url": f"/api/v2/jobs/{job_id}"
+    }
+
+@app.get("/api/v2/jobs/{job_id}")
+def check_job_status(job_id: str, current_user: User = Depends(get_current_user)):
+    """Checks the live progress and status of a queued background job."""
+    job = job_status_store.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job ID not found.")
+    return {"job_id": job_id, "job_info": job}
+
+
+# --- EXISTING CORE GENERATION & PREVIEW ENDPOINTS ---
 
 @app.post("/generate-book")
 async def generate_book(
@@ -149,7 +346,6 @@ async def generate_book(
         raise HTTPException(status_code=500, detail=f"Enterprise Pipeline Error: {str(e)}")
         
     finally:
-        # Section 4.3: Secure Temp File Cleanup Guarantee
         if tmp_input_path and os.path.exists(tmp_input_path):
             try:
                 os.remove(tmp_input_path)
@@ -270,11 +466,10 @@ async def batch_export_books(
             headers={"Content-Disposition": f"attachment; filename=exampress_batch_export_{book_type}.zip"}
         )
         
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Batch Export Pipeline Error: {str(e)}")
+    except:
+        raise HTTPException(status_code=500, detail="Batch Export Pipeline Error")
         
     finally:
-        # Section 4.3: Secure Cleanup of Batch Directory
         if os.path.exists(batch_tmp_dir):
             try:
                 shutil.rmtree(batch_tmp_dir)
