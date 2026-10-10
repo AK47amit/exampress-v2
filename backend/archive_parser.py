@@ -3,17 +3,33 @@ import zipfile
 import tempfile
 from parser import parse_uploaded_file
 
-def extract_and_parse_archive(archive_path: str, book_type: str, format_size: str) -> dict:
+def extract_and_parse_archive(archive_path: str, book_type: str, format_size: str, column_count: int = 2) -> dict:
     """
-    Extracts a ZIP archive, iterates through all contained docx/xlsx/csv/json files,
-    parses them individually using the Universal Parser, and merges them into a single Canonical Book Schema.
+    Extracts a ZIP archive with strict security validation (Zip Bomb & Path Traversal protection),
+    iterates through all contained files, parses them via Universal Parser, and merges them into a single Canonical Book Schema.
     """
     extracted_dir = tempfile.mkdtemp()
     
     try:
-        # Extract archive contents with strict validation
+        # Extract archive contents with strict security validation
         if zipfile.is_zipfile(archive_path):
             with zipfile.ZipFile(archive_path, 'r') as zip_ref:
+                # Security checks: Limit total uncompressed size, file count, and check for path traversal
+                file_count = len(zip_ref.namelist())
+                if file_count > 100:
+                    raise ValueError("Archive contains too many files. Maximum allowed limit is 100 files.")
+                
+                total_uncompressed_size = 0
+                for zinfo in zip_ref.infolist():
+                    total_uncompressed_size += zinfo.file_size
+                    filename = zinfo.filename
+                    # Path traversal protection
+                    if filename.startswith('/') or '..' in filename or os.path.isabs(filename):
+                        raise ValueError(f"Malicious file path traversal detected in archive: {filename}")
+                
+                if total_uncompressed_size > 100 * 1024 * 1024:  # 100MB uncompressed limit (Zip Bomb protection)
+                    raise ValueError("Archive uncompressed size exceeds the 100MB safety limit.")
+                
                 zip_ref.extractall(extracted_dir)
         else:
             raise ValueError("Only standard ZIP archives are currently supported for batch extraction.")
@@ -34,12 +50,13 @@ def extract_and_parse_archive(archive_path: str, book_type: str, format_size: st
                 
                 if ext in [".json", ".xlsx", ".xls", ".csv", ".docx", ".txt", ".pdf"]:
                     try:
-                        # Parse individual file into Canonical Schema format
+                        # Parse individual file into Canonical Schema format with column support
                         parsed_book = parse_uploaded_file(
                             file_path=file_path,
                             file_extension=ext,
                             book_type=book_type,
-                            format_size=format_size
+                            format_size=format_size,
+                            column_count=column_count
                         )
                         
                         # Collect all chapters/blocks from this parsed file
@@ -60,6 +77,7 @@ def extract_and_parse_archive(archive_path: str, book_type: str, format_size: st
             "title": master_title,
             "book_type": book_type,
             "format_size": format_size,
+            "column_count": column_count,
             "author": "Exampur Editorial Board (Batch Engine)",
             "chapters": all_chapters
         }

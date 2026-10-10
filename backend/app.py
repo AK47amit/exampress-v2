@@ -26,6 +26,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 100 MB maximum file size limit for security and stability
+MAX_FILE_SIZE = 100 * 1024 * 1024
+
 @app.get("/")
 def health_check():
     return {"status": "Exampress V2 Enterprise Backend is running successfully!"}
@@ -34,7 +37,7 @@ def health_check():
 async def generate_book(
     book_type: str = Form(...),
     format_size: str = Form(...),
-    column_count: int = Form(2),  # <--- Added column_count parameter here!
+    column_count: int = Form(2),
     file: UploadFile = File(None)
 ):
     tmp_input_path = None
@@ -44,6 +47,14 @@ async def generate_book(
         canonical_data = None
         
         if file and file.filename:
+            # Validate file size prior to processing
+            file.file.seek(0, os.SEEK_END)
+            file_size = file.file.tell()
+            file.file.seek(0)  # Reset pointer back to start
+            
+            if file_size > MAX_FILE_SIZE:
+                raise HTTPException(status_code=400, detail="Uploaded file exceeds the maximum allowed size limit of 100MB.")
+
             filename = file.filename.lower()
             ext = os.path.splitext(filename)[1]
             
@@ -65,7 +76,7 @@ async def generate_book(
                         file_extension=ext,
                         book_type=book_type,
                         format_size=format_size,
-                        column_count=column_count  # <--- Passed column_count to parser!
+                        column_count=column_count
                     )
             except Exception as parse_err:
                 raise HTTPException(status_code=400, detail=f"Universal Parser Error: {str(parse_err)}")
@@ -99,7 +110,7 @@ async def generate_book(
         output_pdf = generate_exampur_book(
             output_filename=tmp_output_path,
             canonical_data=canonical_data,
-            column_count=column_count  # <--- Passed column_count to generator!
+            column_count=column_count
         )
         
         if not output_pdf or not os.path.exists(output_pdf):
@@ -114,6 +125,8 @@ async def generate_book(
             headers={"Content-Disposition": f"attachment; filename=exampress_{book_type}_{format_size}_{column_count}col.pdf"}
         )
         
+    except HTTPException as he:
+        raise he
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Enterprise Pipeline Error: {str(e)}")
         
