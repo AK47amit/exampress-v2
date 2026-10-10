@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from parser import parse_uploaded_file
 from generator import generate_exampur_book
 from archive_parser import extract_and_parse_archive
+from idml_generator import IDMLGenerator  # Phase 7: Adobe IDML Interchange Generator
 
 # SaaS Foundations Imports (Phase 5)
 from database import engine, get_db
@@ -28,7 +29,7 @@ except ImportError:
 # Automatically create database tables on startup if they don't exist
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Exampress V2 Enterprise SaaS API", version="2.9")
+app = FastAPI(title="Exampress V2 Enterprise SaaS API", version="3.0")
 
 # Flexible CORS configuration for Vercel production/preview and local development
 origins = [
@@ -63,7 +64,7 @@ class ProjectSaveRequest(BaseModel):
     canonical_data: dict
 
 
-# Section 4.3 & Phase 5: End-to-End Health & SaaS Status Endpoint
+# Section 4.3 & Phase 5/7: End-to-End Health & SaaS Status Endpoint
 @app.get("/")
 def health_check():
     return {
@@ -75,7 +76,8 @@ def health_check():
             "archive_extractor": "Operational",
             "pdf_preview": "Operational" if fitz else "Degraded (PyMuPDF missing)",
             "saas_auth_database": "Operational",
-            "async_background_jobs": "Operational"
+            "async_background_jobs": "Operational",
+            "adobe_idml_interchange": "Operational"
         }
     }
 
@@ -246,6 +248,69 @@ def check_job_status(job_id: str, current_user: User = Depends(get_current_user)
     return {"job_id": job_id, "job_info": job}
 
 
+# --- PHASE 7: ADOBE IDML INTERCHANGE EXPORT ENDPOINT ---
+
+@app.post("/api/v2/export-idml")
+async def export_book_idml(
+    book_type: str = Form("quiz"),
+    format_size: str = Form("B5"),
+    column_count: int = Form(2),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Exports book canonical data into an Adobe InDesign (IDML) package 
+    for professional layout editing and designer workflows.
+    """
+    tmp_idml_path = tempfile.NamedTemporaryFile(delete=False, suffix=".idml").name
+    
+    try:
+        canonical_data = {
+            "title": f"Exampress IDML Export - {current_user.email}",
+            "book_type": book_type,
+            "format_size": format_size,
+            "column_count": column_count,
+            "chapters": [
+                {
+                    "chapter_title": "Chapter 1: InDesign Interchange Content",
+                    "blocks": [
+                        {
+                            "type": "question",
+                            "q_no": 1,
+                            "text": "Does IDML allow seamless round-trip editing with professional designers?",
+                            "options": ["No", "Yes", "Maybe", "Never"],
+                            "answer": "Yes",
+                            "explanation": "IDML packages XML stories and spreads for native InDesign typesetting."
+                        }
+                    ]
+                }
+            ]
+        }
+        
+        output_file = IDMLGenerator.generate_idml_package(canonical_data, tmp_idml_path)
+        
+        if not output_file or not os.path.exists(output_file):
+            raise HTTPException(status_code=500, detail="IDML generation engine failed.")
+            
+        with open(output_file, "rb") as f:
+            idml_bytes = f.read()
+            
+        return Response(
+            content=idml_bytes,
+            media_type="application/vnd.adobe.indesign-idml-package",
+            headers={"Content-Disposition": f"attachment; filename=exampress_{book_type}_{format_size}.idml"}
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"IDML Pipeline Error: {str(e)}")
+        
+    finally:
+        if os.path.exists(tmp_idml_path):
+            try:
+                os.remove(tmp_idml_path)
+            except Exception:
+                pass
+
+
 # --- EXISTING CORE GENERATION & PREVIEW ENDPOINTS ---
 
 @app.post("/generate-book")
@@ -262,10 +327,9 @@ async def generate_book(
         canonical_data = None
         
         if file and file.filename:
-            # Validate file size prior to processing
             file.file.seek(0, os.SEEK_END)
             file_size = file.file.tell()
-            file.file.seek(0)  # Reset pointer back to start
+            file.file.seek(0)
             
             if file_size > MAX_FILE_SIZE:
                 raise HTTPException(status_code=400, detail="Uploaded file exceeds the maximum allowed size limit of 100MB.")
@@ -378,7 +442,6 @@ async def preview_generated_pdf(file: UploadFile = File(...)):
         if len(doc) == 0:
             raise HTTPException(status_code=400, detail="Uploaded PDF is empty or invalid.")
         
-        # Render first page as high-res PNG thumbnail
         page = doc[0]
         pix = page.get_pixmap(dpi=150)
         img_bytes = pix.tobytes("png")
@@ -431,7 +494,6 @@ async def batch_export_books(
             with open(file_tmp_path, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
                 
-            # Parse & Generate individual book via pipeline
             canonical_data = parse_uploaded_file(
                 file_path=file_tmp_path,
                 file_extension=ext,
@@ -455,7 +517,6 @@ async def batch_export_books(
         if not generated_pdfs:
             raise HTTPException(status_code=400, detail="No valid books could be generated from the uploaded batch.")
             
-        # Bundle all generated PDFs into a secure ZIP archive
         with zipfile.ZipFile(zip_output_path, 'w', zipfile.ZIP_DEFLATED) as zip_ref:
             for pdf_p in generated_pdfs:
                 zip_ref.write(pdf_p, arcname=os.path.basename(pdf_p))
