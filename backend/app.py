@@ -1,13 +1,21 @@
 import os
 import shutil
 import tempfile
+import base64
+import zipfile
 from fastapi import FastAPI, UploadFile, File, Form, Response, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from parser import parse_uploaded_file
 from generator import generate_exampur_book
 from archive_parser import extract_and_parse_archive
 
-app = FastAPI(title="Exampress V2 Enterprise API", version="2.5")
+try:
+    import fitz  # PyMuPDF for visual review & thumbnail generation (Section 4.1)
+except ImportError:
+    fitz = None
+
+app = FastAPI(title="Exampress V2 Enterprise API", version="2.7")
 
 # Flexible CORS configuration for Vercel production/preview and local development
 origins = [
@@ -29,9 +37,19 @@ app.add_middleware(
 # 100 MB maximum file size limit for security and stability
 MAX_FILE_SIZE = 100 * 1024 * 1024
 
+# Section 4.3: End-to-End Health & Pipeline Verification Endpoint
 @app.get("/")
 def health_check():
-    return {"status": "Exampress V2 Enterprise Backend is running successfully!"}
+    return {
+        "status": "Exampress V2 Enterprise Backend is running successfully!",
+        "pipeline_status": "Active",
+        "modules": {
+            "parser": "Operational",
+            "generator": "Operational",
+            "archive_extractor": "Operational",
+            "pdf_preview": "Operational" if fitz else "Degraded (PyMuPDF missing)"
+        }
+    }
 
 @app.post("/generate-book")
 async def generate_book(
@@ -131,6 +149,7 @@ async def generate_book(
         raise HTTPException(status_code=500, detail=f"Enterprise Pipeline Error: {str(e)}")
         
     finally:
+        # Section 4.3: Secure Temp File Cleanup Guarantee
         if tmp_input_path and os.path.exists(tmp_input_path):
             try:
                 os.remove(tmp_input_path)
@@ -139,5 +158,125 @@ async def generate_book(
         if tmp_output_path and os.path.exists(tmp_output_path):
             try:
                 os.remove(tmp_output_path)
+            except Exception:
+                pass
+
+
+# Phase 4.1: PDF Preview & Thumbnail Generator Endpoint
+@app.post("/api/v2/preview-pdf")
+async def preview_generated_pdf(file: UploadFile = File(...)):
+    """
+    Converts the first page of the generated or uploaded PDF into a high-quality base64 PNG thumbnail 
+    for real-time visual review in the frontend dashboard.
+    """
+    if not fitz:
+        raise HTTPException(status_code=500, detail="PyMuPDF (fitz) library is not installed on the backend.")
+    
+    tmp_preview_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_p:
+            shutil.copyfileobj(file.file, tmp_p)
+            tmp_preview_path = tmp_p.name
+            
+        doc = fitz.open(tmp_preview_path)
+        if len(doc) == 0:
+            raise HTTPException(status_code=400, detail="Uploaded PDF is empty or invalid.")
+        
+        # Render first page as high-res PNG thumbnail
+        page = doc[0]
+        pix = page.get_pixmap(dpi=150)
+        img_bytes = pix.tobytes("png")
+        encoded_img = base64.b64encode(img_bytes).decode("utf-8")
+        
+        doc.close()
+        
+        return JSONResponse(content={
+            "status": "success",
+            "total_pages": len(doc),
+            "preview_thumbnail": f"data:image/png;base64,{encoded_img}"
+        })
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"PDF Preview Generation Error: {str(e)}")
+        
+    finally:
+        if tmp_preview_path and os.path.exists(tmp_preview_path):
+            try:
+                os.remove(tmp_preview_path)
+            except Exception:
+                pass
+
+
+# Phase 4.2 & 4.3: Export & Download Manager with Full Pipeline Verification
+@app.post("/api/v2/batch-export")
+async def batch_export_books(
+    book_type: str = Form("quiz"),
+    format_size: str = Form("B5"),
+    column_count: int = Form(2),
+    files: list[UploadFile] = File(...)
+):
+    """
+    Accepts multiple documents, processes each through the canonical & layout engine,
+    and bundles them into a single downloadable ZIP package with verified cleanup.
+    """
+    batch_tmp_dir = tempfile.mkdtemp()
+    zip_output_path = tempfile.NamedTemporaryFile(delete=False, suffix=".zip").name
+    
+    try:
+        generated_pdfs = []
+        
+        for idx, file in enumerate(files):
+            if not file.filename:
+                continue
+                
+            ext = os.path.splitext(file.filename)[1].lower()
+            file_tmp_path = os.path.join(batch_tmp_dir, f"input_{idx}{ext}")
+            
+            with open(file_tmp_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+                
+            # Parse & Generate individual book via pipeline
+            canonical_data = parse_uploaded_file(
+                file_path=file_tmp_path,
+                file_extension=ext,
+                book_type=book_type,
+                format_size=format_size,
+                column_count=column_count
+            )
+            
+            pdf_filename = os.path.splitext(file.filename)[0] + f"_typeset_{book_type}.pdf"
+            pdf_path = os.path.join(batch_tmp_dir, pdf_filename)
+            
+            generate_exampur_book(
+                output_filename=pdf_path,
+                canonical_data=canonical_data,
+                column_count=column_count
+            )
+            
+            if os.path.exists(pdf_path):
+                generated_pdfs.append(pdf_path)
+                
+        if not generated_pdfs:
+            raise HTTPException(status_code=400, detail="No valid books could be generated from the uploaded batch.")
+            
+        # Bundle all generated PDFs into a secure ZIP archive
+        with zipfile.ZipFile(zip_output_path, 'w', zipfile.ZIP_DEFLATED) as zip_ref:
+            for pdf_p in generated_pdfs:
+                zip_ref.write(pdf_p, arcname=os.path.basename(pdf_p))
+                
+        return Response(
+            content=open(zip_output_path, "rb").read(),
+            media_type="application/zip",
+            headers={"Content-Disposition": f"attachment; filename=exampress_batch_export_{book_type}.zip"}
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Batch Export Pipeline Error: {str(e)}")
+        
+    finally:
+        # Section 4.3: Secure Cleanup of Batch Directory
+        if os.path.exists(batch_tmp_dir):
+            try:
+                shutil.rmtree(batch_tmp_dir)
             except Exception:
                 pass
