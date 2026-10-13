@@ -76,13 +76,13 @@ def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type=
             margin: 15mm;
             @bottom-right {{
                 content: "Page " counter(page) " of " counter(pages);
-                font-family: 'Noto Sans Devanagari', 'DejaVu Sans', Arial, sans-serif;
+                font-family: 'FreeSans', 'Noto Sans', 'DejaVu Sans', Arial, sans-serif;
                 font-size: 8pt;
                 color: #64748b;
             }}
             @bottom-left {{
                 content: "Exampur Publication Division — {book_type.upper()} Enterprise Edition";
-                font-family: 'Noto Sans Devanagari', 'DejaVu Sans', Arial, sans-serif;
+                font-family: 'FreeSans', 'Noto Sans', 'DejaVu Sans', Arial, sans-serif;
                 font-size: 8pt;
                 color: #64748b;
             }}
@@ -93,18 +93,16 @@ def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type=
     theme_accent = "#047857" if book_type == "quiz" else ("#1d4ed8" if book_type == "theory" else "#b91c1c")
     theme_bg = "#ecfdf5" if book_type == "quiz" else ("#eff6ff" if book_type == "theory" else "#fef2f2")
 
-    # Build clean HTML content with Google Fonts included for Devanagari support without boxes
+    # Build clean HTML content using offline Unicode system fonts to prevent network hangs & OOM crashes without boxes
     html_content = f"""
     <!DOCTYPE html>
     <html lang="hi">
     <head>
         <meta charset="UTF-8">
         <style>
-            @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;700&display=swap');
-            
             {page_css}
             body {{
-                font-family: 'Noto Sans Devanagari', 'DejaVu Sans', Arial, sans-serif;
+                font-family: 'FreeSans', 'Noto Sans', 'DejaVu Sans', Arial, sans-serif;
                 color: #1e293b;
                 line-height: 1.4;
                 font-size: 9pt;
