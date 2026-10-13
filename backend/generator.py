@@ -93,7 +93,7 @@ def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type=
     theme_accent = "#047857" if book_type == "quiz" else ("#1d4ed8" if book_type == "theory" else "#b91c1c")
     theme_bg = "#ecfdf5" if book_type == "quiz" else ("#eff6ff" if book_type == "theory" else "#fef2f2")
 
-    # Build clean HTML content with multi-column and specialized styles
+    # Build clean HTML content with Google Fonts included for Devanagari support without boxes
     html_content = f"""
     <!DOCTYPE html>
     <html lang="hi">
