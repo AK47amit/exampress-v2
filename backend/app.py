@@ -42,13 +42,12 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 
 # Robust & Flexible CORS configuration for Vercel production/preview and local development
+# Robust & Flexible CORS configuration for Vercel production/preview and local development
 origins = [
-    origins = [
-    "https://exampurv2.vercel.app",  # Yeh tera real Vercel frontend domain hai
+    "https://exampurv2.vercel.app",
     "https://exampressv2.vercel.app",
     "http://localhost:5173",
     "http://localhost:3000"
-]
 ]
 
 app.add_middleware(
