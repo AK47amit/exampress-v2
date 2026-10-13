@@ -93,8 +93,9 @@ def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type=
     theme_accent = "#047857" if book_type == "quiz" else ("#1d4ed8" if book_type == "theory" else "#b91c1c")
     theme_bg = "#ecfdf5" if book_type == "quiz" else ("#eff6ff" if book_type == "theory" else "#fef2f2")
 
-    # Build clean HTML content using offline Unicode system fonts to prevent network hangs & OOM crashes without boxes
-    html_content = f"""
+    # Build clean HTML parts using list appending to optimize memory allocation and prevent string overhead
+    html_parts = []
+    html_parts.append(f"""
     <!DOCTYPE html>
     <html lang="hi">
     <head>
@@ -225,35 +226,33 @@ def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type=
                 Mode: {book_type.upper()} &nbsp;|&nbsp; Format: {format_size} &nbsp;|&nbsp; Columns: {column_count} &nbsp;|&nbsp; Engine: V2 Enterprise Pipeline
             </div>
         </div>
-    """
+    """)
 
     # Chapters & Questions Rendering
     for chap in book_data.get("chapters", []):
-        html_content += f'<div class="chapter-title">{chap.get("chapter_title")}</div>'
-        html_content += '<div class="questions-container">'
+        html_parts.append(f'<div class="chapter-title">{chap.get("chapter_title")}</div>')
+        html_parts.append('<div class="questions-container">')
         
         for q in chap.get("questions", []):
-            html_content += f"""
+            options_html = "".join([f'<div class="option-row">{opt}</div>' for opt in q.get("options", [])])
+            ans_html = f'<div class="answer-text">Answer: {q.get("answer")}</div>' if q.get('answer') else ""
+            exp_html = f'<div class="explanation-box">Exp: {q.get("explanation")}</div>' if (book_type == "solutions" and q.get('explanation')) else ""
+            
+            html_parts.append(f"""
             <div class="question-box">
                 <div class="q-text">Q.{q.get('q_no')} {q.get('question')}</div>
                 <div class="options-grid">
-            """
-            for opt in q.get("options", []):
-                html_content += f'<div class="option-row">{opt}</div>'
-            html_content += "</div>"
-            
-            if q.get('answer'):
-                html_content += f'<div class="answer-text">Answer: {q.get("answer")}</div>'
-            
-            if book_type == "solutions" and q.get('explanation'):
-                html_content += f'<div class="explanation-box">Exp: {q.get("explanation")}</div>'
-            
-            html_content += "</div>"
-        html_content += '</div>'
+                    {options_html}
+                </div>
+                {ans_html}
+                {exp_html}
+            </div>
+            """)
+        html_parts.append('</div>')
 
     # Answer Key Table Rendering
     if book_data.get("answer_key"):
-        html_content += """
+        html_parts.append("""
         <div class="answer-section">
             <div class="chapter-title">Answer Key & Detailed Explanations</div>
             <table>
@@ -265,25 +264,26 @@ def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type=
                     </tr>
                 </thead>
                 <tbody>
-        """
+        """)
         for item in book_data.get("answer_key", []):
-            html_content += f"""
+            html_parts.append(f"""
                     <tr>
                         <td>{item.get('q')}</td>
                         <td>{item.get('ans')}</td>
                         <td>{item.get('exp')}</td>
                     </tr>
-            """
-        html_content += """
+            """)
+        html_parts.append("""
                 </tbody>
             </table>
         </div>
-        """
+        """)
 
-    html_content += """
+    html_parts.append("""
     </body>
     </html>
-    """
+    """)
 
-    HTML(string=html_content).write_pdf(output_filename)
+    full_html = "".join(html_parts)
+    HTML(string=full_html).write_pdf(output_filename)
     return output_filename
