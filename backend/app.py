@@ -42,7 +42,6 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 
 # Robust & Flexible CORS configuration for Vercel production/preview and local development
-# Robust & Flexible CORS configuration for Vercel production/preview and local development
 origins = [
     "https://exampurv2.vercel.app",
     "https://exampressv2.vercel.app",
@@ -184,7 +183,7 @@ def get_user_projects(current_user: User = Depends(get_current_user), db = Depen
     }
 
 
-# --- PHASE 5.4: ASYNCHRONOUS BACKGROUND JOBS & QUEUING ---
+# --- PHASE 5.4: ASYNCHRONOUS BACKGROUND JOBS & QUEUING (PUBLICLY ACCESSIBLE) ---
 
 job_status_store = {}
 
@@ -218,38 +217,82 @@ async def generate_book_async(
     book_type: str = Form("quiz"),
     format_size: str = Form("B5"),
     column_count: int = Form(2),
-    current_user: User = Depends(get_current_user)
+    file: UploadFile = File(None)
 ):
     """
     Initiates heavy book generation in the background to prevent server timeouts.
-    Returns a Job ID immediately for status tracking.
+    Returns a Job ID immediately for status tracking. (Public endpoint)
     """
     job_id = str(uuid.uuid4())
     output_pdf_path = os.path.join(tempfile.gettempdir(), f"exampress_job_{job_id}.pdf")
     
-    canonical_data = {
-        "title": f"Async Enterprise Book - {current_user.email}",
-        "book_type": book_type,
-        "format_size": format_size,
-        "column_count": column_count,
-        "author": "Exampur Publication Division",
-        "chapters": [
-            {
-                "chapter_title": "Chapter 1: Background Processed SaaS Content",
-                "blocks": [
+    tmp_input_path = None
+    canonical_data = None
+    
+    try:
+        if file and file.filename:
+            file.file.seek(0, os.SEEK_END)
+            file_size = file.file.tell()
+            file.file.seek(0)
+            
+            if file_size > MAX_FILE_SIZE:
+                raise HTTPException(status_code=400, detail="Uploaded file exceeds the maximum allowed size limit of 100MB.")
+
+            filename = file.filename.lower()
+            ext = os.path.splitext(filename)[1]
+            
+            with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp_in:
+                shutil.copyfileobj(file.file, tmp_in)
+                tmp_input_path = tmp_in.name
+            
+            if ext in [".zip", ".tar", ".gz"]:
+                canonical_data = extract_and_parse_archive(
+                    archive_path=tmp_input_path,
+                    book_type=book_type,
+                    format_size=format_size,
+                    column_count=column_count
+                )
+            else:
+                canonical_data = parse_uploaded_file(
+                    file_path=tmp_input_path,
+                    file_extension=ext,
+                    book_type=book_type,
+                    format_size=format_size,
+                    column_count=column_count
+                )
+        else:
+            canonical_data = {
+                "title": "Exampress Default Practice Book",
+                "book_type": book_type,
+                "format_size": format_size,
+                "column_count": column_count,
+                "author": "Exampur Publication Division",
+                "chapters": [
                     {
-                        "type": "question",
-                        "q_no": 1,
-                        "text": "Is background queue processing essential for enterprise scaling?",
-                        "options": ["No", "Yes", "Maybe", "Never"],
-                        "answer": "Yes",
-                        "explanation": "Background workers prevent Gateway Timeouts on heavy compilation workloads."
+                        "chapter_title": "Chapter 1: General Awareness & Quantitative Aptitude",
+                        "blocks": [
+                            {
+                                "type": "question",
+                                "q_no": 1,
+                                "text": "What is the capital city of India?",
+                                "options": ["Mumbai", "New Delhi", "Kolkata", "Chennai"],
+                                "answer": "New Delhi",
+                                "explanation": "New Delhi is the national capital of India."
+                            }
+                        ]
                     }
                 ]
             }
-        ]
-    }
-    
+    except Exception as parse_err:
+        logger.error(f"Parser error during async generation: {str(parse_err)}")
+        raise HTTPException(status_code=400, detail=f"Universal Parser Error: {str(parse_err)}")
+    finally:
+        if tmp_input_path and os.path.exists(tmp_input_path):
+            try:
+                os.remove(tmp_input_path)
+            except Exception:
+                pass
+
     job_status_store[job_id] = {"status": "queued"}
     background_tasks.add_task(
         background_generate_book_task,
@@ -261,7 +304,7 @@ async def generate_book_async(
         output_path=output_pdf_path
     )
     
-    logger.info(f"Queued background generation job {job_id} for user {current_user.email}")
+    logger.info(f"Queued background generation job {job_id}")
     return {
         "status": "success",
         "message": "Book generation queued successfully in background.",
@@ -270,8 +313,8 @@ async def generate_book_async(
     }
 
 @app.get("/api/v2/jobs/{job_id}")
-def check_job_status(job_id: str, current_user: User = Depends(get_current_user)):
-    """Checks the live progress and status of a queued background job."""
+def check_job_status(job_id: str):
+    """Checks the live progress and status of a queued background job (Public endpoint)."""
     job = job_status_store.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job ID not found.")
