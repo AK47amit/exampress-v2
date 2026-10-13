@@ -41,7 +41,7 @@ init_sentry(app)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 
-# Flexible CORS configuration for Vercel production/preview and local development
+# Robust & Flexible CORS configuration for Vercel production/preview and local development
 origins = [
     "https://exampressv2.vercel.app",
     "https://exampurv2.vercel.app",
@@ -52,10 +52,11 @@ origins = [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_origin_regex=r"https://exampressv2-.*\.vercel\.app",
+    allow_origin_regex=r"https://(exampressv2|exampurv2)(-.*)?\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition", "Content-Type"]
 )
 
 # 100 MB maximum file size limit for security and stability
