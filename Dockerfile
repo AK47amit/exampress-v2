@@ -29,4 +29,4 @@ COPY . .
 EXPOSE 8080
 
 # Run Uvicorn server on port 8080
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "backend.app:app", "--host", "0.0.0.0", "--port", "8080"]
