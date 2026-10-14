@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 
-from parser import parse_uploaded_file
+from .parser import parse_uploaded_file
 from generator import generate_exampur_book
 from archive_parser import extract_and_parse_archive
 from idml_generator import IDMLGenerator  # Phase 7: Adobe IDML Interchange Generator
