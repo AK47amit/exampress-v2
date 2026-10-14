@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Layers, FileText, Download, Sparkles, CheckCircle2, Cpu, ChevronDown, FileSpreadsheet } from 'lucide-react';
 
-const BACKEND_URL = 'https://exampress-v2-backend.onrender.com';
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://exampress-v2-production.up.railway.app';
 
 export default function App() {
   const [bookType, setBookType] = useState('quiz');
