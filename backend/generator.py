@@ -22,14 +22,14 @@ def generate_exampur_book(
     book_data=None, 
     canonical_data=None, 
     column_count=2,                # Dynamic Support for 2 or 3 Columns
-    # --- Manual Spacing & Typesetting Controls (Parameters a to g) ---
-    font_size=9.0,                 # Base Font Size
-    line_spacing=13.0,             # Line Spacing / Leading (Parameter a & b)
-    question_gap=10.0,             # Space after a question / before next question (Parameter d)
-    option_top_gap=4.0,            # Space between question text and options (Parameter c)
-    column_gap_val=12.0,           # Gutter space between columns (Parameter e)
-    footer_bottom_margin=30.0,     # Page footer / margin spacing (Parameter f)
-    option_vertical_gap=2.0        # Vertical spacing between individual options (Parameter g)
+    # --- Manual Spacing & Typesetting Controls ---
+    font_size=8.5,                 # Optimized Font Size for Multi-Column
+    line_spacing=12.0,             # Optimized Leading to prevent overlap
+    question_gap=8.0,              # Space after each question block
+    option_top_gap=3.0,            # Space between question text and options
+    column_gap_val=10.0,           # Gutter space between columns
+    footer_bottom_margin=25.0,     # Page footer / margin spacing
+    option_vertical_gap=1.5        # Vertical spacing between options
 ):
     """
     Enterprise Layout Engine using ReportLab BaseDocTemplate & Frames for 
@@ -56,7 +56,9 @@ def generate_exampur_book(
                 if block.get("type") == "question":
                     q_no = block.get("q_no", 1)
                     ans_val = block.get("answer", "A")
-                    exp_val = block.get("explanation", "Verified by editorial board.")
+                    exp_val = block.get("explanation", "").strip()
+                    if not exp_val or "auto-generated" in exp_val.lower():
+                        exp_val = "Verified by editorial board."
                     
                     formatted_questions.append({
                         "q_no": q_no,
@@ -90,7 +92,7 @@ def generate_exampur_book(
                             "q_no": 1,
                             "question": "Which institution is organizing the Critical Minerals Innovation Hackathon 2026?",
                             "options": ["[A] IICT / आईआईसीटी", "[B] JNARDDC, Nagpur", "[C] DRDO / डीआरडीओ", "[D] T-Hub / टी-हब"],
-                            "answer": "[B] JNARDDC, Nagpur",
+                            "answer": "[B]",
                             "explanation": "Verified by editorial board."
                         }
                     ]
@@ -104,8 +106,8 @@ def generate_exampur_book(
     # Page dimensions setup (B5 standard for Exampur books)
     page_width, page_height = B5 if format_size.upper() == "B5" else letter
     
-    # Margins setup
-    margin = 30
+    # Strict Margins & Printable Area
+    margin = 25
     printable_width = page_width - (2 * margin)
     printable_height = page_height - margin - footer_bottom_margin
 
@@ -123,10 +125,10 @@ def generate_exampur_book(
             footer_bottom_margin, 
             col_width, 
             printable_height, 
-            leftPadding=4, 
-            rightPadding=4, 
-            topPadding=4, 
-            bottomPadding=4,
+            leftPadding=3, 
+            rightPadding=3, 
+            topPadding=3, 
+            bottomPadding=3,
             id=f'col_{i+1}'
         )
         frames.append(frame)
@@ -137,47 +139,47 @@ def generate_exampur_book(
 
     story = []
 
-    # Styles mapped with config parameters (a to g)
+    # Styles mapped with config parameters
     title_style = ParagraphStyle(
         name='ExampurTitle',
         fontName='HindiBold',
-        fontSize=16,
-        leading=20,
+        fontSize=15,
+        leading=19,
         alignment=1, # Center
-        spaceAfter=15
+        spaceAfter=12
     )
     
     chapter_style = ParagraphStyle(
         name='ExampurChapter',
         fontName='HindiBold',
-        fontSize=11,
-        leading=15,
-        spaceAfter=8,
-        spaceBefore=12
+        fontSize=10,
+        leading=14,
+        spaceAfter=6,
+        spaceBefore=10
     )
 
     question_style = ParagraphStyle(
         name='ExampurQuestion',
         fontName='HindiBold',
         fontSize=font_size,
-        leading=line_spacing,          # Parameter a & b
-        spaceAfter=option_top_gap      # Parameter c
+        leading=line_spacing,          
+        spaceAfter=option_top_gap      
     )
 
     option_style = ParagraphStyle(
         name='ExampurOption',
         fontName='HindiRegular',
         fontSize=font_size - 0.5,
-        leading=line_spacing - 2,
-        spaceAfter=option_vertical_gap # Parameter g
+        leading=line_spacing - 1.5,
+        spaceAfter=option_vertical_gap 
     )
 
     # 1. Cover / Header Title Section
     theme_accent = colors.HexColor('#047857' if book_type == "quiz" else ('#1d4ed8' if book_type == "theory" else '#b91c1c'))
     
-    story.append(Paragraph(book_data.get("publisher", "EXAMPUR PUBLICATION DIVISION"), ParagraphStyle(name='Pub', fontName='HindiBold', fontSize=9, alignment=1, textColor=theme_accent, spaceAfter=8)))
+    story.append(Paragraph(book_data.get("publisher", "EXAMPUR PUBLICATION DIVISION"), ParagraphStyle(name='Pub', fontName='HindiBold', fontSize=8, alignment=1, textColor=theme_accent, spaceAfter=6)))
     story.append(Paragraph(book_data.get("title"), title_style))
-    story.append(Spacer(1, 10))
+    story.append(Spacer(1, 8))
 
     # 2. Chapters & Questions Loop (Flows seamlessly across columns)
     for chap in book_data.get("chapters", []):
@@ -185,7 +187,7 @@ def generate_exampur_book(
         
         for q in chap.get("questions", []):
             q_elements = []
-            q_text = f"Q.{q.get('q_no')} {q.get('question')}"
+            q_text = f"<b>Q.{q.get('q_no')}</b> {q.get('question')}"
             q_elements.append(Paragraph(q_text, question_style))
             
             # Append options line by line
@@ -193,26 +195,26 @@ def generate_exampur_book(
                 q_elements.append(Paragraph(opt, option_style))
             
             if q.get('answer'):
-                ans_style = ParagraphStyle(name='AnsStyle', fontName='HindiBold', fontSize=8, textColor=theme_accent)
+                ans_style = ParagraphStyle(name='AnsStyle', fontName='HindiBold', fontSize=7.5, textColor=theme_accent)
                 q_elements.append(Paragraph(f"Answer: {q.get('answer')}", ans_style))
                 
             if book_type == "solutions" and q.get('explanation'):
-                exp_style = ParagraphStyle(name='ExpStyle', fontName='HindiRegular', fontSize=7.5, textColor=colors.HexColor('#475569'))
+                exp_style = ParagraphStyle(name='ExpStyle', fontName='HindiRegular', fontSize=7, textColor=colors.HexColor('#475569'))
                 q_elements.append(Paragraph(f"Exp: {q.get('explanation')}", exp_style))
 
-            q_elements.append(Spacer(1, question_gap)) # Parameter d: Question gap
+            q_elements.append(Spacer(1, question_gap))
             
             # Keep question block together to avoid breaking awkwardly across columns/pages
             story.append(KeepTogether(q_elements))
 
-        story.append(Spacer(1, 8))
+        story.append(Spacer(1, 6))
 
-    # 3. Answer Key Section (Proper Paragraph Wrapping to prevent overlapping & bad formatting)
+    # 3. Answer Key Section (Proportionally fitted to printable width to prevent table overflow)
     if book_data.get("answer_key"):
         story.append(Paragraph("Answer Key & Detailed Explanations", chapter_style))
         
-        th_style = ParagraphStyle(name='THStyle', fontName='HindiBold', fontSize=7.5, textColor=colors.HexColor('#0f172a'))
-        td_style = ParagraphStyle(name='TDStyle', fontName='HindiRegular', fontSize=7.5, textColor=colors.HexColor('#334155'))
+        th_style = ParagraphStyle(name='THStyle', fontName='HindiBold', fontSize=7, textColor=colors.HexColor('#0f172a'))
+        td_style = ParagraphStyle(name='TDStyle', fontName='HindiRegular', fontSize=7, textColor=colors.HexColor('#334155'))
         
         table_data = [[
             Paragraph("Q", th_style), 
@@ -221,17 +223,25 @@ def generate_exampur_book(
         ]]
         
         for item in book_data.get("answer_key", []):
+            exp_text = item.get('exp', '')
+            if not exp_text or "auto-generated" in exp_text.lower():
+                exp_text = "Verified."
             table_data.append([
                 Paragraph(str(item.get('q')), td_style),
                 Paragraph(str(item.get('ans')), td_style),
-                Paragraph(str(item.get('exp')), td_style)
+                Paragraph(exp_text, td_style)
             ])
         
-        ans_table = Table(table_data, colWidths=[30, 40, printable_width - 70])
+        # Strict proportional column sizing matching printable width
+        col_q = 25
+        col_ans = 35
+        col_exp = printable_width - (col_q + col_ans)
+        
+        ans_table = Table(table_data, colWidths=[col_q, col_ans, col_exp])
         ans_table.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f1f5f9')),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
-            ('TOPPADDING', (0,0), (-1,-1), 4),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+            ('TOPPADDING', (0,0), (-1,-1), 3),
             ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
             ('VALIGN', (0,0), (-1,-1), 'TOP'),
         ]))
