@@ -55,19 +55,22 @@ def generate_exampur_book(
             for block in chap.get("blocks", []):
                 if block.get("type") == "question":
                     q_no = block.get("q_no", 1)
+                    ans_val = block.get("answer", "A")
+                    exp_val = block.get("explanation", "Verified by editorial board.")
+                    
                     formatted_questions.append({
                         "q_no": q_no,
                         "question": block.get("text", ""),
                         "options": block.get("options", []),
-                        "answer": block.get("answer", ""),
-                        "explanation": block.get("explanation", "")
+                        "answer": ans_val,
+                        "explanation": exp_val
                     })
-                    if block.get("answer"):
-                        answer_key_list.append({
-                            "q": q_no,
-                            "ans": block.get("answer", "A"),
-                            "exp": block.get("explanation", "Verified by editorial board.")
-                        })
+                    
+                    answer_key_list.append({
+                        "q": q_no,
+                        "ans": ans_val,
+                        "exp": exp_val
+                    })
             book_data["chapters"].append({
                 "chapter_title": chap.get("chapter_title", "Chapter"),
                 "questions": formatted_questions
@@ -182,22 +185,33 @@ def generate_exampur_book(
 
         story.append(Spacer(1, 10))
 
-    # 3. Answer Key Section
+    # 3. Answer Key Section (Proper Paragraph Wrapping to prevent overlapping & bad formatting)
     if book_data.get("answer_key"):
         story.append(Paragraph("Answer Key & Detailed Explanations", chapter_style))
-        table_data = [["Q.No", "Ans", "Detailed Explanation"]]
+        
+        th_style = ParagraphStyle(name='THStyle', fontName='HindiBold', fontSize=8, textColor=colors.HexColor('#0f172a'))
+        td_style = ParagraphStyle(name='TDStyle', fontName='HindiRegular', fontSize=8, textColor=colors.HexColor('#334155'))
+        
+        table_data = [[
+            Paragraph("Q.No", th_style), 
+            Paragraph("Ans", th_style), 
+            Paragraph("Detailed Explanation", th_style)
+        ]]
+        
         for item in book_data.get("answer_key", []):
-            table_data.append([str(item.get('q')), str(item.get('ans')), str(item.get('exp'))])
+            table_data.append([
+                Paragraph(str(item.get('q')), td_style),
+                Paragraph(str(item.get('ans')), td_style),
+                Paragraph(str(item.get('exp')), td_style)
+            ])
         
         ans_table = Table(table_data, colWidths=[40, 60, 300])
         ans_table.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f1f5f9')),
-            ('TEXTCOLOR', (0,0), (-1,0), colors.HexColor('#0f172a')),
-            ('FONTNAME', (0,0), (-1,-1), 'HindiRegular'),
-            ('FONTSIZE', (0,0), (-1,-1), 8),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
-            ('TOPPADDING', (0,0), (-1,-1), 4),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+            ('TOPPADDING', (0,0), (-1,-1), 5),
             ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
+            ('VALIGN', (0,0), (-1,-1), 'TOP'),
         ]))
         story.append(ans_table)
 

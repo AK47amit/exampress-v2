@@ -29,8 +29,6 @@ class Chapter(BaseModel):
             raise ValueError("Chapter cannot be empty. At least one question block is required.")
         
         q_numbers = [b.q_no for b in blocks]
-        
-        # Check for duplicate question numbers to maintain strict identity preservation
         if len(q_numbers) != len(set(q_numbers)):
             raise ValueError("Validation Error: Duplicate question numbers detected in chapter sequence.")
             
@@ -50,6 +48,99 @@ class CanonicalBookSchema(BaseModel):
         if not chapters:
             raise ValueError("Validation Error: Book canonical model must contain at least one valid chapter.")
         return chapters
+
+
+def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
+    """Helper function to strictly segregate Questions, Options, Answers and Explanations."""
+    blocks = []
+    q_count = 1
+    
+    current_question = None
+    current_options = []
+    current_answer = "A"
+    current_exp = ""
+    
+    # Regex matchers for structure separation
+    q_pattern = re.compile(r'^(q\.?\s*\d+[\.\)]?|\d+[\.\)]\s*|\bquestion\b\s*\d+)', re.IGNORECASE)
+    opt_pattern = re.compile(r'^[\(\[]?\s*([A-Da-d])[\)\]]?\s*[\.\-]?\s*(.+)')
+    ans_pattern = re.compile(r'^(answer|ans)\s*[:\-]\s*(.*)', re.IGNORECASE)
+    exp_pattern = re.compile(r'^(explanation|exp)\s*[:\-]\s*(.*)', re.IGNORECASE)
+
+    for text in lines:
+        text = text.strip()
+        if not text:
+            continue
+
+        ans_match = ans_pattern.match(text)
+        exp_match = exp_pattern.match(text)
+        opt_match = opt_pattern.match(text)
+        q_match = q_pattern.match(text)
+
+        if q_match and not opt_match:
+            # Save previous question if exists
+            if current_question:
+                if not current_options:
+                    current_options = ["[A] Option 1", "[B] Option 2", "[C] Option 3", "[D] Option 4"]
+                blocks.append(QuestionBlock(
+                    q_no=q_count,
+                    text=current_question.strip(),
+                    options=current_options,
+                    answer=current_answer.strip() if current_answer else "A",
+                    explanation=current_exp.strip()
+                ))
+                q_count += 1
+            
+            # Start new question
+            current_question = q_pattern.sub('', text).strip()
+            if not current_question:
+                current_question = text
+            current_options = []
+            current_answer = "A"
+            current_exp = ""
+
+        elif opt_match:
+            # It's an option line (e.g., (A) Manipur or A) Assam)
+            opt_text = text
+            current_options.append(opt_text)
+
+        elif ans_match:
+            current_answer = ans_match.group(2).strip()
+            if not current_answer:
+                current_answer = "A"
+
+        elif exp_match:
+            current_exp = exp_match.group(2).strip()
+
+        else:
+            # Continuation text
+            if current_options:
+                current_options[-1] += " " + text
+            elif current_question:
+                current_question += " " + text
+
+    # Append the last question
+    if current_question:
+        if not current_options:
+            current_options = ["[A] Option 1", "[B] Option 2", "[C] Option 3", "[D] Option 4"]
+        blocks.append(QuestionBlock(
+            q_no=q_count,
+            text=current_question.strip(),
+            options=current_options,
+            answer=current_answer.strip() if current_answer else "A",
+            explanation=current_exp.strip()
+        ))
+
+    if not blocks:
+        blocks.append(QuestionBlock(
+            q_no=1, 
+            text="Parsed document content placeholder.",
+            options=["[A] Alpha", "[B] Beta", "[C] Gamma", "[D] Delta"],
+            answer="A", 
+            explanation="Auto-generated explanation."
+        ))
+
+    return blocks
+
 
 def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, format_size: str, column_count: int = 2) -> dict:
     ext = file_extension.lower()
@@ -100,56 +191,7 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
                     full_text += t + "\n"
             
             lines = [line.strip() for line in full_text.split('\n') if line.strip()]
-            blocks = []
-            q_count = 1
-            
-            current_question = None
-            current_options = []
-            current_answer = "A"
-            current_exp = ""
-            
-            for text in lines:
-                if re.match(r'^(q\.?\s*\d+|\d+[\.\)]|\bquestion\b)', text, re.IGNORECASE):
-                    if current_question:
-                        blocks.append(QuestionBlock(
-                            q_no=q_count,
-                            text=current_question,
-                            options=current_options if current_options else ["[A] Option 1", "[B] Option 2", "[C] Option 3", "[D] Option 4"],
-                            answer=current_answer,
-                            explanation=current_exp
-                        ))
-                        q_count += 1
-                    current_question = text
-                    current_options = []
-                    current_answer = "A"
-                    current_exp = ""
-                elif re.match(r'^[\(\[]?[A-Da-d][\)\]]', text):
-                    current_options.append(text)
-                elif text.lower().startswith("answer:") or text.lower().startswith("ans:"):
-                    current_answer = text
-                elif text.lower().startswith("explanation:"):
-                    current_exp = text
-                else:
-                    if current_question and not current_options:
-                        current_question += " " + text
-                    elif current_options:
-                        current_options[-1] += " " + text
-                        
-            if current_question:
-                blocks.append(QuestionBlock(
-                    q_no=q_count,
-                    text=current_question,
-                    options=current_options if current_options else ["[A] Option 1", "[B] Option 2", "[C] Option 3", "[D] Option 4"],
-                    answer=current_answer,
-                    explanation=current_exp
-                ))
-                
-            if not blocks:
-                blocks.append(QuestionBlock(
-                    q_no=1, text="Parsed PDF content placeholder.",
-                    options=["[A] Alpha", "[B] Beta", "[C] Gamma", "[D] Delta"],
-                    answer="A", explanation="Auto-generated explanation."
-                ))
+            blocks = parse_lines_into_blocks(lines)
                 
             chapter = Chapter(chapter_title="Chapter 1: PDF Document Import (Structured)", blocks=blocks)
             book = CanonicalBookSchema(
@@ -163,60 +205,8 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
 
         elif ext == ".docx":
             doc = Document(file_path)
-            blocks = []
-            q_count = 1
-            
-            current_question = None
-            current_options = []
-            current_answer = "A"
-            current_exp = ""
-            
-            for para in doc.paragraphs:
-                text = para.text.strip()
-                if not text:
-                    continue
-                
-                if re.match(r'^(q\.?\s*\d+|\d+[\.\)]|\bquestion\b)', text, re.IGNORECASE):
-                    if current_question:
-                        blocks.append(QuestionBlock(
-                            q_no=q_count, 
-                            text=current_question, 
-                            options=current_options if current_options else ["[A] Option 1", "[B] Option 2", "[C] Option 3", "[D] Option 4"],
-                            answer=current_answer, 
-                            explanation=current_exp
-                        ))
-                        q_count += 1
-                    current_question = text
-                    current_options = []
-                    current_answer = "A"
-                    current_exp = ""
-                elif re.match(r'^[\(\[]?[A-Da-d][\)\]]', text):
-                    current_options.append(text)
-                elif text.lower().startswith("answer:") or text.lower().startswith("ans:"):
-                    current_answer = text
-                elif text.lower().startswith("explanation:"):
-                    current_exp = text
-                else:
-                    if current_question and not current_options:
-                        current_question += " " + text
-                    elif current_options:
-                        current_options[-1] += " " + text
-                    
-            if current_question:
-                blocks.append(QuestionBlock(
-                    q_no=q_count, 
-                    text=current_question, 
-                    options=current_options if current_options else ["[A] Option 1", "[B] Option 2", "[C] Option 3", "[D] Option 4"],
-                    answer=current_answer, 
-                    explanation=current_exp
-                ))
-                
-            if not blocks:
-                blocks.append(QuestionBlock(
-                    q_no=1, text="Parsed text document content placeholder.",
-                    options=["[A] Alpha", "[B] Beta", "[C] Gamma", "[D] Delta"],
-                    answer="A", explanation="Auto-generated explanation."
-                ))
+            lines = [para.text.strip() for para in doc.paragraphs if para.text.strip()]
+            blocks = parse_lines_into_blocks(lines)
                 
             chapter = Chapter(chapter_title="Chapter 1: Word Document Import (Structured)", blocks=blocks)
             book = CanonicalBookSchema(
