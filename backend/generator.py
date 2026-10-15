@@ -1,6 +1,6 @@
 import os
 from reportlab.lib.pagesizes import letter, B5
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether
+from reportlab.platypus import BaseDocTemplate, PageTemplate, Frame, Paragraph, Spacer, Table, TableStyle, KeepTogether
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.pdfbase import pdfmetrics
@@ -21,7 +21,7 @@ def generate_exampur_book(
     format_size="B5", 
     book_data=None, 
     canonical_data=None, 
-    column_count=2,
+    column_count=2,                # Dynamic Support for 2 or 3 Columns
     # --- Manual Spacing & Typesetting Controls (Parameters a to g) ---
     font_size=9.0,                 # Base Font Size
     line_spacing=13.0,             # Line Spacing / Leading (Parameter a & b)
@@ -32,8 +32,8 @@ def generate_exampur_book(
     option_vertical_gap=2.0        # Vertical spacing between individual options (Parameter g)
 ):
     """
-    Enterprise Layout Engine using Pure ReportLab Platypus with full manual control over 
-    spacing parameters (a to g), multi-column layout, and Devanagari font embedding.
+    Enterprise Layout Engine using ReportLab BaseDocTemplate & Frames for 
+    True Multi-Column (2-Column or 3-Column) Flowable Typesetting.
     """
     register_fonts()
 
@@ -101,17 +101,39 @@ def generate_exampur_book(
             ]
         }
 
-    # Page size setup (B5 standard for Exampur books)
-    page_dimensions = B5 if format_size.upper() == "B5" else letter
+    # Page dimensions setup (B5 standard for Exampur books)
+    page_width, page_height = B5 if format_size.upper() == "B5" else letter
+    
+    # Margins setup
+    margin = 30
+    printable_width = page_width - (2 * margin)
+    printable_height = page_height - margin - footer_bottom_margin
 
-    doc = SimpleDocTemplate(
-        output_filename,
-        pagesize=page_dimensions,
-        rightMargin=30,
-        leftMargin=30,
-        topMargin=30,
-        bottomMargin=footer_bottom_margin
-    )
+    # True Multi-Column Frame Calculation (Supports 2 or 3 columns dynamically)
+    if column_count not in [2, 3]:
+        column_count = 2  # Default fallback
+
+    col_width = (printable_width - ((column_count - 1) * column_gap_val)) / column_count
+
+    frames = []
+    for i in range(column_count):
+        col_x = margin + i * (col_width + column_gap_val)
+        frame = Frame(
+            col_x, 
+            footer_bottom_margin, 
+            col_width, 
+            printable_height, 
+            leftPadding=4, 
+            rightPadding=4, 
+            topPadding=4, 
+            bottomPadding=4,
+            id=f'col_{i+1}'
+        )
+        frames.append(frame)
+
+    doc = BaseDocTemplate(output_filename, pagesize=(page_width, page_height))
+    template = PageTemplate(id='multi_col_template', frames=frames)
+    doc.addPageTemplates([template])
 
     story = []
 
@@ -119,8 +141,8 @@ def generate_exampur_book(
     title_style = ParagraphStyle(
         name='ExampurTitle',
         fontName='HindiBold',
-        fontSize=18,
-        leading=22,
+        fontSize=16,
+        leading=20,
         alignment=1, # Center
         spaceAfter=15
     )
@@ -128,10 +150,10 @@ def generate_exampur_book(
     chapter_style = ParagraphStyle(
         name='ExampurChapter',
         fontName='HindiBold',
-        fontSize=12,
-        leading=16,
-        spaceAfter=10,
-        spaceBefore=15
+        fontSize=11,
+        leading=15,
+        spaceAfter=8,
+        spaceBefore=12
     )
 
     question_style = ParagraphStyle(
@@ -153,11 +175,11 @@ def generate_exampur_book(
     # 1. Cover / Header Title Section
     theme_accent = colors.HexColor('#047857' if book_type == "quiz" else ('#1d4ed8' if book_type == "theory" else '#b91c1c'))
     
-    story.append(Paragraph(book_data.get("publisher", "EXAMPUR PUBLICATION DIVISION"), ParagraphStyle(name='Pub', fontName='HindiBold', fontSize=10, alignment=1, textColor=theme_accent, spaceAfter=10)))
+    story.append(Paragraph(book_data.get("publisher", "EXAMPUR PUBLICATION DIVISION"), ParagraphStyle(name='Pub', fontName='HindiBold', fontSize=9, alignment=1, textColor=theme_accent, spaceAfter=8)))
     story.append(Paragraph(book_data.get("title"), title_style))
-    story.append(Spacer(1, 15))
+    story.append(Spacer(1, 10))
 
-    # 2. Chapters & Questions Loop
+    # 2. Chapters & Questions Loop (Flows seamlessly across columns)
     for chap in book_data.get("chapters", []):
         story.append(Paragraph(chap.get("chapter_title"), chapter_style))
         
@@ -171,31 +193,31 @@ def generate_exampur_book(
                 q_elements.append(Paragraph(opt, option_style))
             
             if q.get('answer'):
-                ans_style = ParagraphStyle(name='AnsStyle', fontName='HindiBold', fontSize=8.5, textColor=theme_accent)
+                ans_style = ParagraphStyle(name='AnsStyle', fontName='HindiBold', fontSize=8, textColor=theme_accent)
                 q_elements.append(Paragraph(f"Answer: {q.get('answer')}", ans_style))
                 
             if book_type == "solutions" and q.get('explanation'):
-                exp_style = ParagraphStyle(name='ExpStyle', fontName='HindiRegular', fontSize=8, textColor=colors.HexColor('#475569'))
+                exp_style = ParagraphStyle(name='ExpStyle', fontName='HindiRegular', fontSize=7.5, textColor=colors.HexColor('#475569'))
                 q_elements.append(Paragraph(f"Exp: {q.get('explanation')}", exp_style))
 
             q_elements.append(Spacer(1, question_gap)) # Parameter d: Question gap
             
-            # Keep question block together to avoid breaking awkwardly across pages
+            # Keep question block together to avoid breaking awkwardly across columns/pages
             story.append(KeepTogether(q_elements))
 
-        story.append(Spacer(1, 10))
+        story.append(Spacer(1, 8))
 
     # 3. Answer Key Section (Proper Paragraph Wrapping to prevent overlapping & bad formatting)
     if book_data.get("answer_key"):
         story.append(Paragraph("Answer Key & Detailed Explanations", chapter_style))
         
-        th_style = ParagraphStyle(name='THStyle', fontName='HindiBold', fontSize=8, textColor=colors.HexColor('#0f172a'))
-        td_style = ParagraphStyle(name='TDStyle', fontName='HindiRegular', fontSize=8, textColor=colors.HexColor('#334155'))
+        th_style = ParagraphStyle(name='THStyle', fontName='HindiBold', fontSize=7.5, textColor=colors.HexColor('#0f172a'))
+        td_style = ParagraphStyle(name='TDStyle', fontName='HindiRegular', fontSize=7.5, textColor=colors.HexColor('#334155'))
         
         table_data = [[
-            Paragraph("Q.No", th_style), 
+            Paragraph("Q", th_style), 
             Paragraph("Ans", th_style), 
-            Paragraph("Detailed Explanation", th_style)
+            Paragraph("Explanation", th_style)
         ]]
         
         for item in book_data.get("answer_key", []):
@@ -205,16 +227,16 @@ def generate_exampur_book(
                 Paragraph(str(item.get('exp')), td_style)
             ])
         
-        ans_table = Table(table_data, colWidths=[40, 60, 300])
+        ans_table = Table(table_data, colWidths=[30, 40, printable_width - 70])
         ans_table.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f1f5f9')),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 5),
-            ('TOPPADDING', (0,0), (-1,-1), 5),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+            ('TOPPADDING', (0,0), (-1,-1), 4),
             ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
             ('VALIGN', (0,0), (-1,-1), 'TOP'),
         ]))
         story.append(ans_table)
 
-    # Build PDF via ReportLab Platypus Engine
+    # Build PDF via ReportLab Multi-Column BaseDocTemplate Engine
     doc.build(story)
     return output_filename

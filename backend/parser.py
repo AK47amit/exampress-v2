@@ -63,7 +63,8 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
     # Regex matchers for structure separation
     q_pattern = re.compile(r'^(q\.?\s*\d+[\.\)]?|\d+[\.\)]\s*|\bquestion\b\s*\d+)', re.IGNORECASE)
     opt_pattern = re.compile(r'^[\(\[]?\s*([A-Da-d])[\)\]]?\s*[\.\-]?\s*(.+)')
-    ans_pattern = re.compile(r'^(answer|ans)\s*[:\-]\s*(.*)', re.IGNORECASE)
+    ans_pattern = re.compile(r'^(answer|ans|उत्तर)\s*[:\-]?\s*[\(\[]?([A-Da-d])[\)\]]?', re.IGNORECASE)
+    ans_fallback_pattern = re.compile(r'^(answer|ans|उत्तर)\s*[:\-]\s*(.*)', re.IGNORECASE)
     exp_pattern = re.compile(r'^(explanation|exp)\s*[:\-]\s*(.*)', re.IGNORECASE)
 
     for text in lines:
@@ -72,6 +73,7 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
             continue
 
         ans_match = ans_pattern.match(text)
+        ans_fallback_match = ans_fallback_pattern.match(text)
         exp_match = exp_pattern.match(text)
         opt_match = opt_pattern.match(text)
         q_match = q_pattern.match(text)
@@ -104,9 +106,20 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
             current_options.append(opt_text)
 
         elif ans_match:
-            current_answer = ans_match.group(2).strip()
+            try:
+                current_answer = ans_match.group(2).strip().upper()
+            except Exception:
+                current_answer = "A"
             if not current_answer:
                 current_answer = "A"
+
+        elif ans_fallback_match:
+            val = ans_fallback_match.group(2).strip()
+            letter_match = re.search(r'[\(\[]?([A-Da-d])[\)\]]?', val)
+            if letter_match:
+                current_answer = letter_match.group(1).upper()
+            else:
+                current_answer = val if val else "A"
 
         elif exp_match:
             current_exp = exp_match.group(2).strip()
