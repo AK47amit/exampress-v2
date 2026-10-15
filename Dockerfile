@@ -4,21 +4,7 @@ FROM python:3.10-slim
 # Set working directory inside container
 WORKDIR /app
 
-# Install essential system dependencies including WeasyPrint requirements
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    libffi-dev \
-    libjpeg-dev \
-    zlib1g-dev \
-    libglib2.0-0 \
-    libgobject-2.0-0 \
-    libpango-1.0-0 \
-    libharfbuzz0b \
-    libpangoft2-1.0-0 \
-    shared-mime-info \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements and install python dependencies
+# Copy requirements and install python dependencies (ReportLab requires no heavy system libs)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

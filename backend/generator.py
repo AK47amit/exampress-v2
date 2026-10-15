@@ -1,12 +1,42 @@
 import os
-from weasyprint import HTML, CSS
+from reportlab.lib.pagesizes import letter, B5
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 
-def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type="quiz", format_size="B5", book_data=None, canonical_data=None, column_count=2):
+def register_fonts():
+    font_dir = os.path.join(os.path.dirname(__file__), "fonts")
+    regular_path = os.path.join(font_dir, "NotoSansDevanagari_Condensed-Regular.ttf")
+    bold_path = os.path.join(font_dir, "NotoSansDevanagari_Condensed-Bold.ttf")
+    
+    # Register Devanagari fonts to completely eliminate tofu/boxes
+    pdfmetrics.registerFont(TTFont('HindiRegular', regular_path))
+    pdfmetrics.registerFont(TTFont('HindiBold', bold_path))
+
+def generate_exampur_book(
+    output_filename="exampress_final_book.pdf", 
+    book_type="quiz", 
+    format_size="B5", 
+    book_data=None, 
+    canonical_data=None, 
+    column_count=2,
+    # --- Manual Spacing & Typesetting Controls (Parameters a to g) ---
+    font_size=9.0,                 # Base Font Size
+    line_spacing=13.0,             # Line Spacing / Leading (Parameter a & b)
+    question_gap=10.0,             # Space after a question / before next question (Parameter d)
+    option_top_gap=4.0,            # Space between question text and options (Parameter c)
+    column_gap_val=12.0,           # Gutter space between columns (Parameter e)
+    footer_bottom_margin=30.0,     # Page footer / margin spacing (Parameter f)
+    option_vertical_gap=2.0        # Vertical spacing between individual options (Parameter g)
+):
     """
-    Enterprise Layout Engine using WeasyPrint supporting dynamic column counts (2 or 3),
-    clean question structures, Specialized Book Type Templates (Section 3.2),
-    and Robust Canonical Data Pipeline Integration (Section 3.4).
+    Enterprise Layout Engine using Pure ReportLab Platypus with full manual control over 
+    spacing parameters (a to g), multi-column layout, and Devanagari font embedding.
     """
+    register_fonts()
+
     # Section 3.4: Robust Pipeline Integration from Canonical Model
     if canonical_data:
         column_count = int(canonical_data.get("column_count", column_count))
@@ -68,222 +98,109 @@ def generate_exampur_book(output_filename="exampress_final_book.pdf", book_type=
             ]
         }
 
-    # Dimensions and running footers/headers for B5 vs A4
-    page_size_val = "b5" if format_size.upper() == "B5" else "a4"
-    page_css = f"""
-        @page {{
-            size: {page_size_val};
-            margin: 15mm;
-            @bottom-right {{
-                content: "Page " counter(page) " of " counter(pages);
-                font-family: 'FreeSans', 'Noto Sans', 'DejaVu Sans', Arial, sans-serif;
-                font-size: 8pt;
-                color: #64748b;
-            }}
-            @bottom-left {{
-                content: "Exampur Publication Division — {book_type.upper()} Enterprise Edition";
-                font-family: 'FreeSans', 'Noto Sans', 'DejaVu Sans', Arial, sans-serif;
-                font-size: 8pt;
-                color: #64748b;
-            }}
-        }}
-    """
+    # Page size setup (B5 standard for Exampur books)
+    page_dimensions = B5 if format_size.upper() == "B5" else letter
 
-    # Specialized Template Theme based on book_type (Section 3.2)
-    theme_accent = "#047857" if book_type == "quiz" else ("#1d4ed8" if book_type == "theory" else "#b91c1c")
-    theme_bg = "#ecfdf5" if book_type == "quiz" else ("#eff6ff" if book_type == "theory" else "#fef2f2")
+    doc = SimpleDocTemplate(
+        output_filename,
+        pagesize=page_dimensions,
+        rightMargin=30,
+        leftMargin=30,
+        topMargin=30,
+        bottomMargin=footer_bottom_margin
+    )
 
-    # Build clean HTML parts using list appending to optimize memory allocation and prevent string overhead
-    html_parts = []
-    html_parts.append(f"""
-    <!DOCTYPE html>
-    <html lang="hi">
-    <head>
-        <meta charset="UTF-8">
-        <style>
-            {page_css}
-            body {{
-                font-family: 'FreeSans', 'Noto Sans', 'DejaVu Sans', Arial, sans-serif;
-                color: #1e293b;
-                line-height: 1.4;
-                font-size: 9pt;
-            }}
-            .cover {{
-                text-align: center;
-                page-break-after: always;
-                padding-top: 100px;
-            }}
-            .publisher {{
-                font-size: 12pt;
-                color: {theme_accent};
-                font-weight: bold;
-                text-transform: uppercase;
-                margin-bottom: 20px;
-            }}
-            .title {{
-                font-size: 22pt;
-                color: #0f172a;
-                font-weight: bold;
-                margin-bottom: 15px;
-            }}
-            .subtitle {{
-                font-size: 11pt;
-                color: #64748b;
-            }}
-            .meta-box {{
-                margin-top: 40px;
-                background-color: {theme_bg};
-                border: 1px solid {theme_accent};
-                padding: 12px;
-                text-align: center;
-                color: {theme_accent};
-                font-weight: bold;
-                font-size: 10pt;
-            }}
-            .chapter-title {{
-                font-size: 12pt;
-                color: #0f172a;
-                font-weight: bold;
-                border-bottom: 2px solid {theme_accent};
-                padding-bottom: 4px;
-                margin-top: 15px;
-                margin-bottom: 10px;
-                page-break-before: always;
-            }}
-            .questions-container {{
-                column-count: {column_count};
-                column-gap: 12px;
-                column-fill: auto;
-                orphans: 3;
-                widows: 3;
-            }}
-            .question-box {{
-                break-inside: avoid;
-                page-break-inside: avoid;
-                margin-bottom: 10px;
-                background: #fff;
-                border: 1px solid #e2e8f0;
-                border-left: 3px solid {theme_accent};
-                padding: 6px 8px;
-                border-radius: 4px;
-            }}
-            .q-text {{
-                font-weight: bold;
-                color: #0f172a;
-                margin-bottom: 4px;
-            }}
-            .options-grid {{
-                margin-left: 4px;
-                margin-bottom: 4px;
-            }}
-            .option-row {{
-                margin-bottom: 2px;
-                color: #334155;
-            }}
-            .answer-text {{
-                font-weight: bold;
-                color: {theme_accent};
-                margin-top: 2px;
-                font-size: 8.5pt;
-            }}
-            .explanation-box {{
-                margin-top: 4px;
-                font-size: 8pt;
-                color: #475569;
-                background: #f8fafc;
-                padding: 3px 6px;
-                border-radius: 3px;
-                border-left: 2px solid #cbd5e1;
-            }}
-            .answer-section {{
-                page-break-before: always;
-            }}
-            table {{
-                width: 100%;
-                border-collapse: collapse;
-                margin-top: 10px;
-                font-size: 9pt;
-            }}
-            th, td {{
-                border: 1px solid #cbd5e1;
-                padding: 6px 8px;
-                text-align: left;
-                vertical-align: top;
-            }}
-            th {{
-                background-color: #f1f5f9;
-                color: #0f172a;
-            }}
-        </style>
-    </head>
-    <body>
+    story = []
 
-        <div class="cover">
-            <div class="publisher">{book_data.get("publisher", "EXAMPUR PUBLICATION DIVISION")}</div>
-            <div class="title">{book_data.get('title')}</div>
-            <div class="subtitle">Curated & Typeset by {book_data.get('author', 'Exampur Editorial')}</div>
-            <div class="meta-box">
-                Mode: {book_type.upper()} &nbsp;|&nbsp; Format: {format_size} &nbsp;|&nbsp; Columns: {column_count} &nbsp;|&nbsp; Engine: V2 Enterprise Pipeline
-            </div>
-        </div>
-    """)
+    # Styles mapped with config parameters (a to g)
+    title_style = ParagraphStyle(
+        name='ExampurTitle',
+        fontName='HindiBold',
+        fontSize=18,
+        leading=22,
+        alignment=1, # Center
+        spaceAfter=15
+    )
+    
+    chapter_style = ParagraphStyle(
+        name='ExampurChapter',
+        fontName='HindiBold',
+        fontSize=12,
+        leading=16,
+        spaceAfter=10,
+        spaceBefore=15
+    )
 
-    # Chapters & Questions Rendering
+    question_style = ParagraphStyle(
+        name='ExampurQuestion',
+        fontName='HindiBold',
+        fontSize=font_size,
+        leading=line_spacing,          # Parameter a & b
+        spaceAfter=option_top_gap      # Parameter c
+    )
+
+    option_style = ParagraphStyle(
+        name='ExampurOption',
+        fontName='HindiRegular',
+        fontSize=font_size - 0.5,
+        leading=line_spacing - 2,
+        spaceAfter=option_vertical_gap # Parameter g
+    )
+
+    # 1. Cover / Header Title Section
+    theme_accent = colors.HexColor('#047857' if book_type == "quiz" else ('#1d4ed8' if book_type == "theory" else '#b91c1c'))
+    
+    story.append(Paragraph(book_data.get("publisher", "EXAMPUR PUBLICATION DIVISION"), ParagraphStyle(name='Pub', fontName='HindiBold', fontSize=10, alignment=1, textColor=theme_accent, spaceAfter=10)))
+    story.append(Paragraph(book_data.get("title"), title_style))
+    story.append(Spacer(1, 15))
+
+    # 2. Chapters & Questions Loop
     for chap in book_data.get("chapters", []):
-        html_parts.append(f'<div class="chapter-title">{chap.get("chapter_title")}</div>')
-        html_parts.append('<div class="questions-container">')
+        story.append(Paragraph(chap.get("chapter_title"), chapter_style))
         
         for q in chap.get("questions", []):
-            options_html = "".join([f'<div class="option-row">{opt}</div>' for opt in q.get("options", [])])
-            ans_html = f'<div class="answer-text">Answer: {q.get("answer")}</div>' if q.get('answer') else ""
-            exp_html = f'<div class="explanation-box">Exp: {q.get("explanation")}</div>' if (book_type == "solutions" and q.get('explanation')) else ""
+            q_elements = []
+            q_text = f"Q.{q.get('q_no')} {q.get('question')}"
+            q_elements.append(Paragraph(q_text, question_style))
             
-            html_parts.append(f"""
-            <div class="question-box">
-                <div class="q-text">Q.{q.get('q_no')} {q.get('question')}</div>
-                <div class="options-grid">
-                    {options_html}
-                </div>
-                {ans_html}
-                {exp_html}
-            </div>
-            """)
-        html_parts.append('</div>')
+            # Append options line by line
+            for opt in q.get("options", []):
+                q_elements.append(Paragraph(opt, option_style))
+            
+            if q.get('answer'):
+                ans_style = ParagraphStyle(name='AnsStyle', fontName='HindiBold', fontSize=8.5, textColor=theme_accent)
+                q_elements.append(Paragraph(f"Answer: {q.get('answer')}", ans_style))
+                
+            if book_type == "solutions" and q.get('explanation'):
+                exp_style = ParagraphStyle(name='ExpStyle', fontName='HindiRegular', fontSize=8, textColor=colors.HexColor('#475569'))
+                q_elements.append(Paragraph(f"Exp: {q.get('explanation')}", exp_style))
 
-    # Answer Key Table Rendering
+            q_elements.append(Spacer(1, question_gap)) # Parameter d: Question gap
+            
+            # Keep question block together to avoid breaking awkwardly across pages
+            story.append(KeepTogether(q_elements))
+
+        story.append(Spacer(1, 10))
+
+    # 3. Answer Key Section
     if book_data.get("answer_key"):
-        html_parts.append("""
-        <div class="answer-section">
-            <div class="chapter-title">Answer Key & Detailed Explanations</div>
-            <table>
-                <thead>
-                    <tr>
-                        <th style="width: 40px;">Q.No</th>
-                        <th style="width: 80px;">Ans</th>
-                        <th>Detailed Explanation (Editorial Verified)</th>
-                    </tr>
-                </thead>
-                <tbody>
-        """)
+        story.append(Paragraph("Answer Key & Detailed Explanations", chapter_style))
+        table_data = [["Q.No", "Ans", "Detailed Explanation"]]
         for item in book_data.get("answer_key", []):
-            html_parts.append(f"""
-                    <tr>
-                        <td>{item.get('q')}</td>
-                        <td>{item.get('ans')}</td>
-                        <td>{item.get('exp')}</td>
-                    </tr>
-            """)
-        html_parts.append("""
-                </tbody>
-            </table>
-        </div>
-        """)
+            table_data.append([str(item.get('q')), str(item.get('ans')), str(item.get('exp'))])
+        
+        ans_table = Table(table_data, colWidths=[40, 60, 300])
+        ans_table.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f1f5f9')),
+            ('TEXTCOLOR', (0,0), (-1,0), colors.HexColor('#0f172a')),
+            ('FONTNAME', (0,0), (-1,-1), 'HindiRegular'),
+            ('FONTSIZE', (0,0), (-1,-1), 8),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+            ('TOPPADDING', (0,0), (-1,-1), 4),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
+        ]))
+        story.append(ans_table)
 
-    html_parts.append("""
-    </body>
-    </html>
-    """)
-
-    full_html = "".join(html_parts)
-    HTML(string=full_html).write_pdf(output_filename)
+    # Build PDF via ReportLab Platypus Engine
+    doc.build(story)
     return output_filename

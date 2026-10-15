@@ -85,7 +85,7 @@ def health_check(request: Request):
         "pipeline_status": "Active",
         "modules": {
             "parser": "Operational",
-            "generator": "Operational",
+            "generator": "Operational (ReportLab Pure Python)",
             "archive_extractor": "Operational",
             "pdf_preview": "Operational" if fitz else "Degraded (PyMuPDF missing)",
             "saas_auth_database": "Operational",
@@ -187,15 +187,38 @@ def get_user_projects(current_user: User = Depends(get_current_user), db = Depen
 
 job_status_store = {}
 
-def background_generate_book_task(job_id: str, book_type: str, format_size: str, column_count: int, canonical_data: dict, output_path: str):
+def background_generate_book_task(
+    job_id: str, 
+    book_type: str, 
+    format_size: str, 
+    column_count: int, 
+    canonical_data: dict, 
+    output_path: str,
+    font_size: float,
+    line_spacing: float,
+    question_gap: float,
+    option_top_gap: float,
+    column_gap_val: float,
+    footer_bottom_margin: float,
+    option_vertical_gap: float
+):
     try:
         job_status_store[job_id] = {"status": "processing", "progress": 50}
-        logger.info(f"Background Job {job_id}: Starting PDF generation...")
+        logger.info(f"Background Job {job_id}: Starting ReportLab PDF generation...")
         
         generate_output = generate_exampur_book(
             output_filename=output_path,
+            book_type=book_type,
+            format_size=format_size,
+            column_count=column_count,
             canonical_data=canonical_data,
-            column_count=column_count
+            font_size=font_size,
+            line_spacing=line_spacing,
+            question_gap=question_gap,
+            option_top_gap=option_top_gap,
+            column_gap_val=column_gap_val,
+            footer_bottom_margin=footer_bottom_margin,
+            option_vertical_gap=option_vertical_gap
         )
         
         if generate_output and os.path.exists(output_path):
@@ -217,11 +240,19 @@ async def generate_book_async(
     book_type: str = Form("quiz"),
     format_size: str = Form("B5"),
     column_count: int = Form(2),
+    # Control Panel Spacing Parameters (a to g)
+    font_size: float = Form(9.0),
+    line_spacing: float = Form(13.0),
+    question_gap: float = Form(10.0),
+    option_top_gap: float = Form(4.0),
+    column_gap_val: float = Form(12.0),
+    footer_bottom_margin: float = Form(30.0),
+    option_vertical_gap: float = Form(2.0),
     file: UploadFile = File(None)
 ):
     """
-    Initiates heavy book generation in the background to prevent server timeouts.
-    Returns a Job ID immediately for status tracking. (Public endpoint)
+    Initiates heavy book generation in the background with custom typesetting parameters.
+    Returns a Job ID immediately for status tracking.
     """
     job_id = str(uuid.uuid4())
     output_pdf_path = os.path.join(tempfile.gettempdir(), f"exampress_job_{job_id}.pdf")
@@ -301,7 +332,14 @@ async def generate_book_async(
         format_size=format_size,
         column_count=column_count,
         canonical_data=canonical_data,
-        output_path=output_pdf_path
+        output_path=output_pdf_path,
+        font_size=font_size,
+        line_spacing=line_spacing,
+        question_gap=question_gap,
+        option_top_gap=option_top_gap,
+        column_gap_val=column_gap_val,
+        footer_bottom_margin=footer_bottom_margin,
+        option_vertical_gap=option_vertical_gap
     )
     
     logger.info(f"Queued background generation job {job_id}")
@@ -397,6 +435,14 @@ async def generate_book(
     book_type: str = Form(...),
     format_size: str = Form(...),
     column_count: int = Form(2),
+    # Control Panel Spacing Parameters (a to g)
+    font_size: float = Form(9.0),
+    line_spacing: float = Form(13.0),
+    question_gap: float = Form(10.0),
+    option_top_gap: float = Form(4.0),
+    column_gap_val: float = Form(12.0),
+    footer_bottom_margin: float = Form(30.0),
+    option_vertical_gap: float = Form(2.0),
     file: UploadFile = File(None)
 ):
     tmp_input_path = None
@@ -468,8 +514,17 @@ async def generate_book(
 
         output_pdf = generate_exampur_book(
             output_filename=tmp_output_path,
+            book_type=book_type,
+            format_size=format_size,
+            column_count=column_count,
             canonical_data=canonical_data,
-            column_count=column_count
+            font_size=font_size,
+            line_spacing=line_spacing,
+            question_gap=question_gap,
+            option_top_gap=option_top_gap,
+            column_gap_val=column_gap_val,
+            footer_bottom_margin=footer_bottom_margin,
+            option_vertical_gap=option_vertical_gap
         )
         
         if not output_pdf or not os.path.exists(output_pdf):
@@ -478,7 +533,7 @@ async def generate_book(
         with open(output_pdf, "rb") as f:
             pdf_bytes = f.read()
             
-        logger.info(f"Book generated successfully: {book_type} ({format_size})")
+        logger.info(f"Book generated successfully via ReportLab: {book_type} ({format_size})")
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
@@ -558,10 +613,18 @@ async def batch_export_books(
     book_type: str = Form("quiz"),
     format_size: str = Form("B5"),
     column_count: int = Form(2),
+    # Control Panel Spacing Parameters (a to g)
+    font_size: float = Form(9.0),
+    line_spacing: float = Form(13.0),
+    question_gap: float = Form(10.0),
+    option_top_gap: float = Form(4.0),
+    column_gap_val: float = Form(12.0),
+    footer_bottom_margin: float = Form(30.0),
+    option_vertical_gap: float = Form(2.0),
     files: list[UploadFile] = File(...)
 ):
     """
-    Accepts multiple documents, processes each through the canonical & layout engine,
+    Accepts multiple documents, processes each through the canonical & layout ReportLab engine,
     and bundles them into a single downloadable ZIP package with verified cleanup.
     """
     batch_tmp_dir = tempfile.mkdtemp()
@@ -593,8 +656,17 @@ async def batch_export_books(
             
             generate_exampur_book(
                 output_filename=pdf_path,
+                book_type=book_type,
+                format_size=format_size,
+                column_count=column_count,
                 canonical_data=canonical_data,
-                column_count=column_count
+                font_size=font_size,
+                line_spacing=line_spacing,
+                question_gap=question_gap,
+                option_top_gap=option_top_gap,
+                column_gap_val=column_gap_val,
+                footer_bottom_margin=footer_bottom_margin,
+                option_vertical_gap=option_vertical_gap
             )
             
             if os.path.exists(pdf_path):

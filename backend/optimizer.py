@@ -4,14 +4,14 @@ import gc
 class DocumentOptimizer:
     """
     Handles memory optimization, chapter-wise chunking, and garbage collection 
-    for massive 500+ page publishing projects.
+    for massive 500+ page publishing projects using ReportLab.
     """
 
     @staticmethod
     def chunk_canonical_data(canonical_data: dict, chunk_size: int = 5) -> list[dict]:
         """
         Splits a massive book's chapters into smaller manageable chunks 
-        to prevent memory spikes during WeasyPrint DOM tree construction.
+        to prevent memory spikes during ReportLab story compilation.
         """
         chapters = canonical_data.get("chapters", [])
         if len(chapters) <= chunk_size:
@@ -30,7 +30,7 @@ class DocumentOptimizer:
     @staticmethod
     def optimize_memory_after_render():
         """
-        Forces Python garbage collection to release heavy DOM structures 
-        and image buffers immediately after PDF compilation.
+        Forces Python garbage collection to release heavy flowable structures 
+        and image buffers immediately after ReportLab PDF compilation.
         """
         gc.collect()

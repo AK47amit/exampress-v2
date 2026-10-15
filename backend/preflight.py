@@ -3,7 +3,7 @@ import os
 class PreflightValidator:
     """
     Enterprise Preflight Checker: Validates canonical structure, questions integrity, 
-    and asset references prior to WeasyPrint rendering.
+    and asset references prior to ReportLab PDF compilation.
     """
     
     @staticmethod
@@ -13,7 +13,7 @@ class PreflightValidator:
         
         # 1. Check basic metadata
         if not canonical_data.get("title"):
-            warnings.warn("Missing book title. Defaulting to Untitled.")
+            warnings.append("Missing book title. Defaulting to Untitled.")
             canonical_data["title"] = "Untitled Publication"
             
         chapters = canonical_data.get("chapters", [])
@@ -23,7 +23,7 @@ class PreflightValidator:
             
         # 2. Iterate and inspect chapters & blocks
         for ch_idx, chapter in enumerate(chapters):
-            ch_title = chapter.get(f"chapter_title", f"Chapter {ch_idx + 1}")
+            ch_title = chapter.get("chapter_title", f"Chapter {ch_idx + 1}")
             blocks = chapter.get("blocks", [])
             
             if not blocks:

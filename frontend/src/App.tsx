@@ -1,17 +1,27 @@
 import React, { useState } from 'react';
-import { Layers, FileText, Download, Sparkles, CheckCircle2, Cpu, ChevronDown, FileSpreadsheet } from 'lucide-react';
+import { Layers, FileText, Download, Sparkles, CheckCircle2, Cpu, ChevronDown, FileSpreadsheet, Sliders } from 'lucide-react';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://exampress-v2-production.up.railway.app';
 
 export default function App() {
   const [bookType, setBookType] = useState('quiz');
   const [formatSize, setFormatSize] = useState('B5');
-  const [columnCount, setColumnCount] = useState('2'); // Added Column Count State
+  const [columnCount, setColumnCount] = useState('2');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
-  const [isColOpen, setIsColOpen] = useState(false); // Dropdown toggle for columns
+  const [isColOpen, setIsColOpen] = useState(false);
+  
+  // Advanced Typesetting Control Panel States (Parameters a to g)
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [fontSize, setFontSize] = useState(9.0);
+  const [lineSpacing, setLineSpacing] = useState(13.0);
+  const [questionGap, setQuestionGap] = useState(10.0);
+  const [optionTopGap, setOptionTopGap] = useState(4.0);
+  const [columnGapVal, setColumnGapVal] = useState(12.0);
+  const [footerBottomMargin, setFooterBottomMargin] = useState(30.0);
+  const [optionVerticalGap, setOptionVerticalGap] = useState(2.0);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -27,7 +37,17 @@ export default function App() {
     const formData = new FormData();
     formData.append('book_type', bookType);
     formData.append('format_size', formatSize);
-    formData.append('column_count', columnCount); // Sending column count to backend
+    formData.append('column_count', columnCount);
+    
+    // Append Advanced Spacing Parameters (a to g)
+    formData.append('font_size', fontSize.toString());
+    formData.append('line_spacing', lineSpacing.toString());
+    formData.append('question_gap', questionGap.toString());
+    formData.append('option_top_gap', optionTopGap.toString());
+    formData.append('column_gap_val', columnGapVal.toString());
+    formData.append('footer_bottom_margin', footerBottomMargin.toString());
+    formData.append('option_vertical_gap', optionVerticalGap.toString());
+
     if (selectedFile) {
       formData.append('file', selectedFile);
     }
@@ -61,7 +81,7 @@ export default function App() {
     } catch (err: any) {
       console.error(err);
       if (err.name === 'AbortError') {
-        alert('Backend request timed out. Render server might be waking up, please try again.');
+        alert('Backend request timed out. Render/Railway server might be waking up, please try again.');
       } else {
         alert('Error connecting to FastAPI server. Check your connection or Brave shields.');
       }
@@ -71,22 +91,22 @@ export default function App() {
   };
 
   return (
-    <div className="relative min-h-screen bg-[#fcfbf9] text-slate-800 flex flex-col items-center justify-center p-6 overflow-hidden selection:bg-emerald-500 selection:text-white font-sans">
+    <div className="relative min-h-screen bg-[#fcfbf9] text-slate-800 flex flex-col items-center justify-center p-6 overflow-x-hidden selection:bg-emerald-500 selection:text-white font-sans">
       <div className="absolute -top-32 -left-32 w-[500px] h-[500px] bg-emerald-200/40 rounded-full blur-[100px] pointer-events-none"></div>
       <div className="absolute -bottom-32 -right-32 w-[500px] h-[500px] bg-stone-200/60 rounded-full blur-[100px] pointer-events-none"></div>
 
-      <div className="relative max-w-xl w-full bg-white/75 backdrop-blur-[35px] border border-emerald-900/10 rounded-[32px] p-8 shadow-[0_20px_50px_rgba(40,50,40,0.06)]">
+      <div className="relative max-w-xl w-full bg-white/75 backdrop-blur-[35px] border border-emerald-900/10 rounded-[32px] p-8 shadow-[0_20px_50px_rgba(40,50,40,0.06)] my-8">
         <div className="text-center mb-8 flex flex-col items-center">
           <div className="relative mb-3 flex items-center justify-center">
             <div className="absolute w-20 h-20 bg-emerald-400/20 rounded-full blur-xl pointer-events-none animate-pulse"></div>
             <img src="/header-logo.png" alt="Exampur Logo" className="w-16 h-16 object-contain relative z-10" />
           </div>
           <div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200/60 text-emerald-800 text-xs font-semibold px-4 py-1.5 rounded-full uppercase tracking-widest shadow-sm mb-3">
-            <Sparkles className="w-3.5 h-3.5 text-emerald-600" /> Exampress Engine V2.0
+            <Sparkles className="w-3.5 h-3.5 text-emerald-600" /> Exampress Engine V2.0 (ReportLab)
           </div>
           <h1 className="text-4xl font-extrabold tracking-tight text-slate-900">Exampress Studio</h1>
           <p className="text-slate-500 text-sm mt-2 max-w-md mx-auto">
-            Next-gen automated typesetting. Replace manual InDesign workflows with press-ready 300 DPI layout compilation in seconds.
+            Next-gen automated typesetting. Press-ready 300 DPI layout compilation with absolute control over spacing.
           </p>
         </div>
 
@@ -172,6 +192,80 @@ export default function App() {
             </div>
           </div>
 
+          {/* Advanced Spacing Control Panel (Parameters a to g) */}
+          <div className="border border-emerald-900/10 rounded-2xl bg-emerald-50/20 p-4">
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="w-full flex items-center justify-between text-xs font-bold uppercase tracking-wider text-emerald-950 cursor-pointer"
+            >
+              <span className="flex items-center gap-2">
+                <Sliders className="w-4 h-4 text-emerald-600" /> Advanced Spacing Controls (Parameters a-g)
+              </span>
+              <ChevronDown className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showAdvanced && (
+              <div className="mt-4 space-y-3 pt-3 border-t border-emerald-900/10 text-xs">
+                <div>
+                  <div className="flex justify-between mb-1 font-medium text-slate-600">
+                    <span>Font Size</span>
+                    <span className="text-emerald-700 font-bold">{fontSize}pt</span>
+                  </div>
+                  <input type="range" min="7" max="14" step="0.5" value={fontSize} onChange={(e) => setFontSize(Number(e.target.value))} className="w-full accent-emerald-600 cursor-pointer" />
+                </div>
+
+                <div>
+                  <div className="flex justify-between mb-1 font-medium text-slate-600">
+                    <span>Line Spacing / Leading (a, b)</span>
+                    <span className="text-emerald-700 font-bold">{lineSpacing}pt</span>
+                  </div>
+                  <input type="range" min="10" max="22" step="0.5" value={lineSpacing} onChange={(e) => setLineSpacing(Number(e.target.value))} className="w-full accent-emerald-600 cursor-pointer" />
+                </div>
+
+                <div>
+                  <div className="flex justify-between mb-1 font-medium text-slate-600">
+                    <span>Question Gap (d)</span>
+                    <span className="text-emerald-700 font-bold">{questionGap}px</span>
+                  </div>
+                  <input type="range" min="2" max="25" step="1" value={questionGap} onChange={(e) => setQuestionGap(Number(e.target.value))} className="w-full accent-emerald-600 cursor-pointer" />
+                </div>
+
+                <div>
+                  <div className="flex justify-between mb-1 font-medium text-slate-600">
+                    <span>Option Top Gap (c)</span>
+                    <span className="text-emerald-700 font-bold">{optionTopGap}px</span>
+                  </div>
+                  <input type="range" min="0" max="15" step="1" value={optionTopGap} onChange={(e) => setOptionTopGap(Number(e.target.value))} className="w-full accent-emerald-600 cursor-pointer" />
+                </div>
+
+                <div>
+                  <div className="flex justify-between mb-1 font-medium text-slate-600">
+                    <span>Column Gutter Gap (e)</span>
+                    <span className="text-emerald-700 font-bold">{columnGapVal}px</span>
+                  </div>
+                  <input type="range" min="5" max="30" step="1" value={columnGapVal} onChange={(e) => setColumnGapVal(Number(e.target.value))} className="w-full accent-emerald-600 cursor-pointer" />
+                </div>
+
+                <div>
+                  <div className="flex justify-between mb-1 font-medium text-slate-600">
+                    <span>Footer Bottom Margin (f)</span>
+                    <span className="text-emerald-700 font-bold">{footerBottomMargin}px</span>
+                  </div>
+                  <input type="range" min="10" max="60" step="5" value={footerBottomMargin} onChange={(e) => setFooterBottomMargin(Number(e.target.value))} className="w-full accent-emerald-600 cursor-pointer" />
+                </div>
+
+                <div>
+                  <div className="flex justify-between mb-1 font-medium text-slate-600">
+                    <span>Option Vertical Gap (g)</span>
+                    <span className="text-emerald-700 font-bold">{optionVerticalGap}pt</span>
+                  </div>
+                  <input type="range" min="0" max="10" step="0.5" value={optionVerticalGap} onChange={(e) => setOptionVerticalGap(Number(e.target.value))} className="w-full accent-emerald-600 cursor-pointer" />
+                </div>
+              </div>
+            )}
+          </div>
+
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Upload Manuscript / Questions (.json, .xlsx, .csv, .docx, .txt, .zip, .rar)</label>
             <label className="border-2 border-dashed border-emerald-300 hover:border-emerald-500 bg-emerald-50/30 rounded-2xl p-4 flex flex-col items-center justify-center cursor-pointer">
@@ -188,12 +282,12 @@ export default function App() {
           <button 
             type="submit" 
             disabled={loading}
-            className="w-full py-4 px-6 bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 font-bold rounded-2xl shadow-lg text-white disabled:opacity-50 flex items-center justify-center gap-2"
+            className="w-full py-4 px-6 bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 font-bold rounded-2xl shadow-lg text-white disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer hover:opacity-95 transition-opacity"
           >
             {loading ? (
               <>
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                <span className="text-sm">Compiling Typeset...</span>
+                <span className="text-sm">Compiling ReportLab PDF...</span>
               </>
             ) : (
               <>
@@ -207,13 +301,13 @@ export default function App() {
         {success && (
           <div className="mt-6 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center gap-3 text-emerald-800 text-sm">
             <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-600" />
-            <span>Book compiled successfully! PDF downloaded to your machine.</span>
+            <span>Book compiled successfully via ReportLab! PDF downloaded.</span>
           </div>
         )}
       </div>
       
-      <div className="absolute bottom-4 text-xs text-slate-400 flex items-center gap-1.5 font-medium">
-        <Cpu className="w-3.5 h-3.5 text-emerald-600" /> Powered by Exampress V2 Core & FastAPI Engine
+      <div className="mt-4 mb-2 text-xs text-slate-400 flex items-center gap-1.5 font-medium">
+        <Cpu className="w-3.5 h-3.5 text-emerald-600" /> Powered by Exampress V2 ReportLab & FastAPI Engine
       </div>
     </div>
   );
