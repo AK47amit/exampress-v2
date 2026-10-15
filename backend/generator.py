@@ -16,7 +16,7 @@ def register_fonts():
     pdfmetrics.registerFont(TTFont('HindiBold', bold_path))
 
 class NumberedCanvas(canvas.Canvas):
-    """Canvas for dynamically generating centered page numbers on every page."""
+    """Canvas for dynamically generating centered page numbers on every page without extra clutter."""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._saved_page_states = []
@@ -59,7 +59,8 @@ def generate_exampur_book(
     option_vertical_gap=2.0        
 ):
     """
-    Enterprise Layout Engine: Starts directly from doc title on page 1 with multi-column flow & clean footers.
+    Enterprise Layout Engine: Starts directly from clean doc title on page 1 with multi-column flow, 
+    automatic sequential question numbering, clean page breaks, and dynamic chapter-end answer tables.
     """
     register_fonts()
 
@@ -104,10 +105,10 @@ def generate_exampur_book(
 
     if not book_data or not book_data.get("chapters"):
         book_data = {
-            "title": "Exampress General Studies & Reasoning Masterclass",
+            "title": "Exampress General Studies Masterclass",
             "chapters": [
                 {
-                    "chapter_title": "Chapter 1: Quantitative Aptitude & Reasoning Mock Set",
+                    "chapter_title": "General Practice Set",
                     "questions": [
                         {
                             "question": "Which institution is organizing the Critical Minerals Innovation Hackathon 2026?",
@@ -132,7 +133,7 @@ def generate_exampur_book(
     if column_count not in [2, 3]:
         column_count = 2
 
-    # Multi-Column Frames starting directly from page 1 (No separate cover page)
+    # Multi-Column Frames starting directly from page 1 (Zero cover page clutter)
     col_width = (printable_width - ((column_count - 1) * column_gap_val)) / column_count
     frames = []
     for i in range(column_count):
@@ -159,10 +160,10 @@ def generate_exampur_book(
     chapter_style = ParagraphStyle(
         name='ExampurChapter',
         fontName='HindiBold',
-        fontSize=10.5,
-        leading=14,
-        spaceAfter=6,
-        spaceBefore=8
+        fontSize=11,
+        leading=15,
+        spaceAfter=8,
+        spaceBefore=6
     )
 
     question_style = ParagraphStyle(
@@ -183,27 +184,24 @@ def generate_exampur_book(
 
     theme_accent = colors.HexColor('#047857' if book_type == "quiz" else ('#1d4ed8' if book_type == "theory" else '#b91c1c'))
 
-    # Chapters & Questions Loop with Chapter Page Breaks & Automatic Sequential Numbering
+    # Chapters & Questions Loop with Automatic Page Breaks & Sequential Numbering
     for index, chap in enumerate(book_data.get("chapters", [])):
         if index > 0:
             story.append(PageBreak())
             
-        # Chapter / Document Title Header
+        # Clean Chapter Title Header at the top of the chapter/document flow
         story.append(Paragraph(chap.get("chapter_title"), chapter_style))
         
-        # Loop through questions with automatic clean serial numbering (Q.1, Q.2, ...)
+        # Automatic sequential question numbering (Q.1, Q.2, Q.3...) per chapter
         for q_idx, q in enumerate(chap.get("questions", []), 1):
             q_elements = []
             
-            # Question Block with automatic sequential numbering
             q_text = f"<b>Q.{q_idx}</b> {q.get('question')}"
             q_elements.append(Paragraph(q_text, question_style))
             
-            # Options Block
             for opt in q.get("options", []):
                 q_elements.append(Paragraph(opt, option_style))
             
-            # Distinct Correct Answer Block
             if q.get('answer'):
                 ans_style = ParagraphStyle(
                     name='AnsStyle', 
@@ -216,7 +214,6 @@ def generate_exampur_book(
                 )
                 q_elements.append(Paragraph(f"Correct Answer: {q.get('answer')}", ans_style))
                 
-            # Explanation Block
             if book_type == "solutions" and q.get('explanation'):
                 exp_style = ParagraphStyle(
                     name='ExpStyle', 
@@ -232,11 +229,11 @@ def generate_exampur_book(
             q_elements.append(Spacer(1, question_gap))
             story.append(KeepTogether(q_elements))
 
-        story.append(Spacer(1, 6))
+        story.append(Spacer(1, 8))
 
-        # Chapter-End Answer Key Section with synchronized sequential numbers
+        # Dynamic Chapter-End Answer Key Table
         if chap.get("answer_key"):
-            story.append(Spacer(1, 8))
+            story.append(Spacer(1, 10))
             story.append(Paragraph(f"Answer Key - {chap.get('chapter_title')}", chapter_style))
             
             th_style = ParagraphStyle(name='THStyle', fontName='HindiBold', fontSize=7.5, leading=10, textColor=colors.HexColor('#0f172a'))
@@ -265,8 +262,8 @@ def generate_exampur_book(
             ans_table = Table(table_data, colWidths=[col_q, col_ans, col_exp])
             ans_table.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f1f5f9')),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 3),
-                ('TOPPADDING', (0,0), (-1,-1), 3),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+                ('TOPPADDING', (0,0), (-1,-1), 4),
                 ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
                 ('VALIGN', (0,0), (-1,-1), 'TOP'),
             ]))

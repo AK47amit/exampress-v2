@@ -51,7 +51,7 @@ class CanonicalBookSchema(BaseModel):
 
 
 def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
-    """Helper function to strictly segregate Questions, Options, Answers and Explanations with automatic numbering."""
+    """Helper function to strictly segregate Questions, Options, Answers and Explanations with automatic numbering starting from 1."""
     blocks = []
     q_count = 1
     
@@ -121,7 +121,6 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
             elif current_question:
                 current_question += " " + text
             else:
-                # If text appears before any explicit question match, treat as a new question automatically
                 if current_question:
                     blocks.append(QuestionBlock(
                         q_no=q_count,
@@ -225,13 +224,21 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
             doc = Document(file_path)
             paragraphs = [para.text.strip() for para in doc.paragraphs if para.text.strip()]
             
-            # Extract actual doc title from the first paragraph/header
-            doc_title = "Word Document Import"
-            if paragraphs:
+            # Ultra-clean title extraction removing Section prefixes, numbers, extensions and brackets
+            base_name = os.path.basename(file_path)
+            clean_title = re.sub(r'\.[^.]+$', '', base_name)
+            # Remove patterns like "Section 1: 1. " or similar junk prefixes
+            clean_title = re.sub(r'^(section\s*\d+[\:\-]?\s*)?(\d+[\.\-\s]*)?', '', clean_title, flags=re.IGNORECASE).strip()
+            clean_title = re.sub(r'\s*\(\d+\)\s*$', '', clean_title).strip()
+            
+            doc_title = clean_title if clean_title else "Practice Chapter"
+            
+            # If docx first paragraph looks like a title/heading, we can use it or fallback to clean filename title
+            if paragraphs and len(paragraphs[0]) < 80 and not re.search(r'q\.?\s*\d+', paragraphs[0], re.IGNORECASE):
                 doc_title = paragraphs[0]
-                lines_to_parse = paragraphs[1:] if len(paragraphs) > 1 else paragraphs
+                lines_to_parse = paragraphs[1:]
             else:
-                lines_to_parse = []
+                lines_to_parse = paragraphs
                 
             blocks = parse_lines_into_blocks(lines_to_parse)
                 
