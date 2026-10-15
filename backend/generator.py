@@ -1,6 +1,6 @@
 import os
 from reportlab.lib.pagesizes import letter, B5
-from reportlab.platypus import BaseDocTemplate, PageTemplate, Frame, Paragraph, Spacer, Table, TableStyle, KeepTogether, PageBreak
+from reportlab.platypus import BaseDocTemplate, PageTemplate, Frame, Paragraph, Spacer, Table, TableStyle, KeepTogether, PageBreak, NextPageTemplate
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.pdfbase import pdfmetrics
@@ -31,7 +31,7 @@ def generate_exampur_book(
     option_vertical_gap=2.5        
 ):
     """
-    Enterprise Layout Engine with Full-Width Headers, Strict Block Separation, and Uniform Styling.
+    Enterprise Layout Engine with Full-Width Title Page & Multi-Column Chapter Flow.
     """
     register_fonts()
 
@@ -112,9 +112,22 @@ def generate_exampur_book(
     if column_count not in [2, 3]:
         column_count = 2
 
-    col_width = (printable_width - ((column_count - 1) * column_gap_val)) / column_count
+    # 1. Single Full-Width Frame for Cover / Title Header
+    frame_single = Frame(
+        margin, 
+        footer_bottom_margin, 
+        printable_width, 
+        printable_height, 
+        leftPadding=4, 
+        rightPadding=4, 
+        topPadding=4, 
+        bottomPadding=4,
+        id='single_col_frame'
+    )
 
-    frames = []
+    # 2. Multi-Column Frames for Chapters & Content
+    col_width = (printable_width - ((column_count - 1) * column_gap_val)) / column_count
+    frames_multi = []
     for i in range(column_count):
         col_x = margin + i * (col_width + column_gap_val)
         frame = Frame(
@@ -128,20 +141,21 @@ def generate_exampur_book(
             bottomPadding=4,
             id=f'col_{i+1}'
         )
-        frames.append(frame)
+        frames_multi.append(frame)
 
     doc = BaseDocTemplate(output_filename, pagesize=(page_width, page_height))
-    template = PageTemplate(id='multi_col_template', frames=frames)
-    doc.addPageTemplates([template])
+    
+    template_single = PageTemplate(id='single_page', frames=[frame_single])
+    template_multi = PageTemplate(id='multi_col_page', frames=frames_multi)
+    doc.addPageTemplates([template_single, template_multi])
 
     story = []
 
-    # Full-Width Title Styles
     title_style = ParagraphStyle(
         name='ExampurTitle',
         fontName='HindiBold',
-        fontSize=16,
-        leading=20,
+        fontSize=18,
+        leading=22,
         alignment=1, 
         spaceAfter=15
     )
@@ -155,7 +169,6 @@ def generate_exampur_book(
         spaceBefore=12
     )
 
-    # Uniform Question Style (No random bolding)
     question_style = ParagraphStyle(
         name='ExampurQuestion',
         fontName='HindiBold',
@@ -174,12 +187,16 @@ def generate_exampur_book(
 
     theme_accent = colors.HexColor('#047857' if book_type == "quiz" else ('#1d4ed8' if book_type == "theory" else '#b91c1c'))
     
-    # 1. Full-Width Cover / Header Title Section (Spans entire width)
-    story.append(Paragraph(book_data.get("publisher", "EXAMPUR PUBLICATION DIVISION"), ParagraphStyle(name='Pub', fontName='HindiBold', fontSize=9, alignment=1, textColor=theme_accent, spaceAfter=6)))
+    # Title Section on Full-Width Single Frame Page
+    story.append(Paragraph(book_data.get("publisher", "EXAMPUR PUBLICATION DIVISION"), ParagraphStyle(name='Pub', fontName='HindiBold', fontSize=10, alignment=1, textColor=theme_accent, spaceAfter=8)))
     story.append(Paragraph(book_data.get("title"), title_style))
-    story.append(Spacer(1, 10))
+    story.append(Spacer(1, 15))
+    
+    # Switch to Multi-Column template for the rest of the book
+    story.append(NextPageTemplate('multi_col_page'))
+    story.append(PageBreak())
 
-    # 2. Chapters & Questions Loop with Chapter Page Breaks & Strict Block Separation
+    # Chapters & Questions Loop with Chapter Page Breaks & Strict Block Separation
     for index, chap in enumerate(book_data.get("chapters", [])):
         if index > 0:
             story.append(PageBreak())
@@ -189,15 +206,12 @@ def generate_exampur_book(
         for q in chap.get("questions", []):
             q_elements = []
             
-            # Question Block
             q_text = f"<b>Q.{q.get('q_no')}</b> {q.get('question')}"
             q_elements.append(Paragraph(q_text, question_style))
             
-            # Options Block
             for opt in q.get("options", []):
                 q_elements.append(Paragraph(opt, option_style))
             
-            # Distinct Correct Answer Block
             if q.get('answer'):
                 ans_style = ParagraphStyle(
                     name='AnsStyle', 
@@ -210,7 +224,6 @@ def generate_exampur_book(
                 )
                 q_elements.append(Paragraph(f"Correct Answer: {q.get('answer')}", ans_style))
                 
-            # Explanation Block
             if book_type == "solutions" and q.get('explanation'):
                 exp_style = ParagraphStyle(
                     name='ExpStyle', 
@@ -228,7 +241,7 @@ def generate_exampur_book(
 
         story.append(Spacer(1, 8))
 
-        # 3. Chapter-End Answer Key Section
+        # Chapter-End Answer Key Section
         if chap.get("answer_key"):
             story.append(Spacer(1, 10))
             story.append(Paragraph(f"Answer Key - {chap.get('chapter_title')}", chapter_style))
