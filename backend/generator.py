@@ -11,7 +11,6 @@ def register_fonts():
     regular_path = os.path.join(font_dir, "NotoSansDevanagari_Condensed-Regular.ttf")
     bold_path = os.path.join(font_dir, "NotoSansDevanagari_Condensed-Bold.ttf")
     
-    # Register Devanagari fonts to completely eliminate tofu/boxes
     pdfmetrics.registerFont(TTFont('HindiRegular', regular_path))
     pdfmetrics.registerFont(TTFont('HindiBold', bold_path))
 
@@ -21,22 +20,21 @@ def generate_exampur_book(
     format_size="B5", 
     book_data=None, 
     canonical_data=None, 
-    column_count=2,                # Dynamic Support for 2 or 3 Columns
-    # --- Manual Spacing & Typesetting Controls ---
-    font_size=8.5,                 # Optimized Font Size for Multi-Column
-    line_spacing=12.0,             # Optimized Leading to prevent overlap
-    question_gap=8.0,              # Space after each question block
-    option_top_gap=3.0,            # Space between question text and options
-    column_gap_val=10.0,           # Gutter space between columns
-    footer_bottom_margin=25.0,     # Page footer / margin spacing
-    option_vertical_gap=1.5        # Vertical spacing between options
+    column_count=2,                
+    # --- Advanced Spacing Controls (Hooked with Frontend Sliders) ---
+    font_size=9.0,                 
+    line_spacing=14.0,             
+    question_gap=12.0,             
+    option_top_gap=4.0,            
+    column_gap_val=12.0,           
+    footer_bottom_margin=30.0,     
+    option_vertical_gap=2.5        
 ):
     """
-    Enterprise Layout Engine with Strict Block Separation to prevent text overlapping.
+    Enterprise Layout Engine with Full-Width Headers, Strict Block Separation, and Uniform Styling.
     """
     register_fonts()
 
-    # Section 3.4: Robust Pipeline Integration from Canonical Model
     if canonical_data:
         column_count = int(canonical_data.get("column_count", column_count))
         format_size = canonical_data.get("format_size", format_size)
@@ -105,10 +103,8 @@ def generate_exampur_book(
             ]
         }
 
-    # Page dimensions setup (B5 standard for Exampur books)
     page_width, page_height = B5 if format_size.upper() == "B5" else letter
     
-    # Strict Margins & Printable Area
     margin = 25
     printable_width = page_width - (2 * margin)
     printable_height = page_height - margin - footer_bottom_margin
@@ -126,10 +122,10 @@ def generate_exampur_book(
             footer_bottom_margin, 
             col_width, 
             printable_height, 
-            leftPadding=3, 
-            rightPadding=3, 
-            topPadding=3, 
-            bottomPadding=3,
+            leftPadding=4, 
+            rightPadding=4, 
+            topPadding=4, 
+            bottomPadding=4,
             id=f'col_{i+1}'
         )
         frames.append(frame)
@@ -140,25 +136,26 @@ def generate_exampur_book(
 
     story = []
 
-    # Styles mapped with config parameters
+    # Full-Width Title Styles
     title_style = ParagraphStyle(
         name='ExampurTitle',
         fontName='HindiBold',
-        fontSize=15,
-        leading=19,
+        fontSize=16,
+        leading=20,
         alignment=1, 
-        spaceAfter=12
+        spaceAfter=15
     )
     
     chapter_style = ParagraphStyle(
         name='ExampurChapter',
         fontName='HindiBold',
-        fontSize=10,
-        leading=14,
-        spaceAfter=6,
-        spaceBefore=10
+        fontSize=11,
+        leading=15,
+        spaceAfter=8,
+        spaceBefore=12
     )
 
+    # Uniform Question Style (No random bolding)
     question_style = ParagraphStyle(
         name='ExampurQuestion',
         fontName='HindiBold',
@@ -170,19 +167,19 @@ def generate_exampur_book(
     option_style = ParagraphStyle(
         name='ExampurOption',
         fontName='HindiRegular',
-        fontSize=font_size - 0.5,
-        leading=line_spacing - 1.5,
+        fontSize=font_size,
+        leading=line_spacing,
         spaceAfter=option_vertical_gap 
     )
 
     theme_accent = colors.HexColor('#047857' if book_type == "quiz" else ('#1d4ed8' if book_type == "theory" else '#b91c1c'))
     
-    # 1. Cover / Header Title Section
-    story.append(Paragraph(book_data.get("publisher", "EXAMPUR PUBLICATION DIVISION"), ParagraphStyle(name='Pub', fontName='HindiBold', fontSize=8, alignment=1, textColor=theme_accent, spaceAfter=6)))
+    # 1. Full-Width Cover / Header Title Section (Spans entire width)
+    story.append(Paragraph(book_data.get("publisher", "EXAMPUR PUBLICATION DIVISION"), ParagraphStyle(name='Pub', fontName='HindiBold', fontSize=9, alignment=1, textColor=theme_accent, spaceAfter=6)))
     story.append(Paragraph(book_data.get("title"), title_style))
-    story.append(Spacer(1, 8))
+    story.append(Spacer(1, 10))
 
-    # 2. Chapters & Questions Loop with Chapter-Wise Page Breaks & Strict Block Separation
+    # 2. Chapters & Questions Loop with Chapter Page Breaks & Strict Block Separation
     for index, chap in enumerate(book_data.get("chapters", [])):
         if index > 0:
             story.append(PageBreak())
@@ -192,38 +189,52 @@ def generate_exampur_book(
         for q in chap.get("questions", []):
             q_elements = []
             
-            # Strict Block 1: Question Number & Text in an independent Paragraph
+            # Question Block
             q_text = f"<b>Q.{q.get('q_no')}</b> {q.get('question')}"
             q_elements.append(Paragraph(q_text, question_style))
             
-            # Strict Block 2: Each Option rendered in its own separate Paragraph with vertical gap
+            # Options Block
             for opt in q.get("options", []):
                 q_elements.append(Paragraph(opt, option_style))
             
-            # Strict Block 3: Correct Answer rendered in highlighted distinct color block
+            # Distinct Correct Answer Block
             if q.get('answer'):
-                ans_style = ParagraphStyle(name='AnsStyle', fontName='HindiBold', fontSize=7.5, textColor=theme_accent, spaceBefore=2, spaceAfter=2)
+                ans_style = ParagraphStyle(
+                    name='AnsStyle', 
+                    fontName='HindiBold', 
+                    fontSize=font_size, 
+                    leading=line_spacing, 
+                    textColor=theme_accent, 
+                    spaceBefore=4, 
+                    spaceAfter=4
+                )
                 q_elements.append(Paragraph(f"Correct Answer: {q.get('answer')}", ans_style))
                 
-            # Strict Block 4: Explanation block (if solutions mode)
+            # Explanation Block
             if book_type == "solutions" and q.get('explanation'):
-                exp_style = ParagraphStyle(name='ExpStyle', fontName='HindiRegular', fontSize=7, textColor=colors.HexColor('#475569'), spaceBefore=2, spaceAfter=2)
+                exp_style = ParagraphStyle(
+                    name='ExpStyle', 
+                    fontName='HindiRegular', 
+                    fontSize=font_size - 0.5, 
+                    leading=line_spacing - 1.0, 
+                    textColor=colors.HexColor('#475569'), 
+                    spaceBefore=2, 
+                    spaceAfter=2
+                )
                 q_elements.append(Paragraph(f"Exp: {q.get('explanation')}", exp_style))
 
             q_elements.append(Spacer(1, question_gap))
-            
-            # Keep entire question unit together across frames safely
             story.append(KeepTogether(q_elements))
 
-        story.append(Spacer(1, 6))
+        story.append(Spacer(1, 8))
 
         # 3. Chapter-End Answer Key Section
         if chap.get("answer_key"):
-            story.append(Spacer(1, 8))
+            story.append(Spacer(1, 10))
             story.append(Paragraph(f"Answer Key - {chap.get('chapter_title')}", chapter_style))
             
-            th_style = ParagraphStyle(name='THStyle', fontName='HindiBold', fontSize=7, textColor=colors.HexColor('#0f172a'))
-            td_style = ParagraphStyle(name='TDStyle', fontName='HindiRegular', fontSize=7, textColor=colors.HexColor('#334155'))
+            th_style = ParagraphStyle(name='THStyle', fontName='HindiBold', fontSize=7.5, leading=10, textColor=colors.HexColor('#0f172a'))
+            td_style = ParagraphStyle(name='TDStyle', fontName='HindiRegular', fontSize=7.5, leading=10, textColor=colors.HexColor('#334155'))
             
             table_data = [[
                 Paragraph("Q", th_style), 
@@ -242,14 +253,14 @@ def generate_exampur_book(
                 ])
             
             col_q = 25
-            col_ans = 35
+            col_ans = 45
             col_exp = printable_width - (col_q + col_ans)
             
             ans_table = Table(table_data, colWidths=[col_q, col_ans, col_exp])
             ans_table.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f1f5f9')),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 3),
-                ('TOPPADDING', (0,0), (-1,-1), 3),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+                ('TOPPADDING', (0,0), (-1,-1), 4),
                 ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
                 ('VALIGN', (0,0), (-1,-1), 'TOP'),
             ]))
