@@ -229,21 +229,26 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
             
             if paragraphs:
                 first_para = paragraphs[0]
-                # Check if the first paragraph is a question or an option
-                is_question_or_opt = bool(re.search(r'^(q\.?\s*\d+|[\(\[]?[A-Da-d][\)\]]?|\d+[\.\)])', first_para, re.IGNORECASE))
-                
-                # If first paragraph is short and not a question, treat it as the actual chapter title heading
-                if len(first_para) < 100 and not is_question_or_opt:
-                    doc_title = first_para
+                # Check if first paragraph contains filename artifacts or path junk
+                if ".docx" in first_para.lower() or "section" in first_para.lower():
+                    # Extract text after hyphen if present, else clean it
+                    if "-" in first_para:
+                        doc_title = first_para.split("-")[-1].strip()
+                    else:
+                        doc_title = first_para
                     lines_to_parse = paragraphs[1:]
                 else:
-                    # Fallback to clean filename title if document doesn't have a header title
-                    base_name = os.path.basename(file_path)
-                    clean_title = re.sub(r'\.[^.]+$', '', base_name)
-                    clean_title = re.sub(r'^(section\s*\d+[\:\-]?\s*)?(\d+[\.\-\s]*)?', '', clean_title, flags=re.IGNORECASE).strip()
-                    clean_title = re.sub(r'\s*\(\d+\)\s*$', '', clean_title).strip()
-                    doc_title = clean_title if clean_title else "Practice Chapter"
-                    lines_to_parse = paragraphs
+                    is_question_or_opt = bool(re.search(r'^(q\.?\s*\d+|[\(\[]?[A-Da-d][\)\]]?|\d+[\.\)])', first_para, re.IGNORECASE))
+                    if len(first_para) < 100 and not is_question_or_opt:
+                        doc_title = first_para
+                        lines_to_parse = paragraphs[1:]
+                    else:
+                        base_name = os.path.basename(file_path)
+                        clean_title = re.sub(r'\.[^.]+$', '', base_name)
+                        clean_title = re.sub(r'^(section\s*\d+[\:\-]?\s*)?(\d+[\.\-\s]*)?', '', clean_title, flags=re.IGNORECASE).strip()
+                        clean_title = re.sub(r'\s*\(\d+\)\s*$', '', clean_title).strip()
+                        doc_title = clean_title if clean_title else "Practice Chapter"
+                        lines_to_parse = paragraphs
                 
             blocks = parse_lines_into_blocks(lines_to_parse)
                 
