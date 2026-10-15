@@ -51,7 +51,7 @@ class CanonicalBookSchema(BaseModel):
 
 
 def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
-    """Helper function to strictly segregate Questions, Options, Answers and Explanations."""
+    """Helper function to strictly segregate Questions, Options, Answers and Explanations with automatic numbering."""
     blocks = []
     q_count = 1
     
@@ -60,7 +60,6 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
     current_answer = "A"
     current_exp = ""
     
-    # Regex matchers for structure separation
     q_pattern = re.compile(r'^(q\.?\s*\d+[\.\)]?|\d+[\.\)]\s*|\bquestion\b\s*\d+)', re.IGNORECASE)
     opt_pattern = re.compile(r'^[\(\[]?\s*([A-Da-d])[\)\]]?\s*[\.\-]?\s*(.+)')
     ans_pattern = re.compile(r'^(answer|ans|उत्तर)\s*[:\-]?\s*[\(\[]?([A-Da-d])[\)\]]?', re.IGNORECASE)
@@ -79,38 +78,30 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
         q_match = q_pattern.match(text)
 
         if q_match and not opt_match:
-            # Save previous question if exists
             if current_question:
                 if not current_options:
                     current_options = ["[A] Option 1", "[B] Option 2", "[C] Option 3", "[D] Option 4"]
                 blocks.append(QuestionBlock(
                     q_no=q_count,
-                    text=current_question.strip(),
+                    text=q_pattern.sub('', current_question).strip() or current_question.strip(),
                     options=current_options,
                     answer=current_answer.strip() if current_answer else "A",
                     explanation=current_exp.strip()
                 ))
                 q_count += 1
             
-            # Start new question
-            current_question = q_pattern.sub('', text).strip()
-            if not current_question:
-                current_question = text
+            current_question = text
             current_options = []
             current_answer = "A"
             current_exp = ""
 
         elif opt_match:
-            # It's an option line (e.g., (A) Manipur or A) Assam)
-            opt_text = text
-            current_options.append(opt_text)
+            current_options.append(text)
 
         elif ans_match:
             try:
                 current_answer = ans_match.group(2).strip().upper()
             except Exception:
-                current_answer = "A"
-            if not current_answer:
                 current_answer = "A"
 
         elif ans_fallback_match:
@@ -125,13 +116,26 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
             current_exp = exp_match.group(2).strip()
 
         else:
-            # Continuation text
             if current_options:
                 current_options[-1] += " " + text
             elif current_question:
                 current_question += " " + text
+            else:
+                # If text appears before any explicit question match, treat as a new question automatically
+                if current_question:
+                    blocks.append(QuestionBlock(
+                        q_no=q_count,
+                        text=current_question.strip(),
+                        options=current_options or ["[A] Option 1", "[B] Option 2", "[C] Option 3", "[D] Option 4"],
+                        answer=current_answer,
+                        explanation=current_exp
+                    ))
+                    q_count += 1
+                current_question = text
+                current_options = []
+                current_answer = "A"
+                current_exp = ""
 
-    # Append the last question
     if current_question:
         if not current_options:
             current_options = ["[A] Option 1", "[B] Option 2", "[C] Option 3", "[D] Option 4"]
@@ -182,7 +186,7 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
                 explanation = str(row.get('explanation', ''))
                 blocks.append(QuestionBlock(q_no=q_no, text=text, options=options, answer=answer, explanation=explanation))
                 
-            chapter = Chapter(chapter_title="Chapter 1: Imported Question Bank (Verified)", blocks=blocks)
+            chapter = Chapter(chapter_title="Chapter 1: Imported Question Bank", blocks=blocks)
             book = CanonicalBookSchema(
                 title="Imported Dataset Book", 
                 book_type=book_type, 
@@ -204,11 +208,12 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
                     full_text += t + "\n"
             
             lines = [line.strip() for line in full_text.split('\n') if line.strip()]
-            blocks = parse_lines_into_blocks(lines)
+            doc_title = lines[0] if lines else "PDF Document Import"
+            blocks = parse_lines_into_blocks(lines[1:] if len(lines) > 1 else lines)
                 
-            chapter = Chapter(chapter_title="Chapter 1: PDF Document Import (Structured)", blocks=blocks)
+            chapter = Chapter(chapter_title=doc_title, blocks=blocks)
             book = CanonicalBookSchema(
-                title="Imported PDF Book", 
+                title=doc_title, 
                 book_type=book_type, 
                 format_size=format_size, 
                 column_count=column_count,
@@ -218,12 +223,21 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
 
         elif ext == ".docx":
             doc = Document(file_path)
-            lines = [para.text.strip() for para in doc.paragraphs if para.text.strip()]
-            blocks = parse_lines_into_blocks(lines)
+            paragraphs = [para.text.strip() for para in doc.paragraphs if para.text.strip()]
+            
+            # Extract actual doc title from the first paragraph/header
+            doc_title = "Word Document Import"
+            if paragraphs:
+                doc_title = paragraphs[0]
+                lines_to_parse = paragraphs[1:] if len(paragraphs) > 1 else paragraphs
+            else:
+                lines_to_parse = []
                 
-            chapter = Chapter(chapter_title="Chapter 1: Word Document Import (Structured)", blocks=blocks)
+            blocks = parse_lines_into_blocks(lines_to_parse)
+                
+            chapter = Chapter(chapter_title=doc_title, blocks=blocks)
             book = CanonicalBookSchema(
-                title="Imported Word Document Book", 
+                title=doc_title, 
                 book_type=book_type, 
                 format_size=format_size, 
                 column_count=column_count,

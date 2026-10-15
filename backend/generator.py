@@ -1,10 +1,11 @@
 import os
 from reportlab.lib.pagesizes import letter, B5
-from reportlab.platypus import BaseDocTemplate, PageTemplate, Frame, Paragraph, Spacer, Table, TableStyle, KeepTogether, PageBreak, NextPageTemplate
+from reportlab.platypus import BaseDocTemplate, PageTemplate, Frame, Paragraph, Spacer, Table, TableStyle, KeepTogether, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfgen import canvas
 
 def register_fonts():
     font_dir = os.path.join(os.path.dirname(__file__), "fonts")
@@ -13,6 +14,33 @@ def register_fonts():
     
     pdfmetrics.registerFont(TTFont('HindiRegular', regular_path))
     pdfmetrics.registerFont(TTFont('HindiBold', bold_path))
+
+class NumberedCanvas(canvas.Canvas):
+    """Canvas for dynamically generating centered page numbers on every page."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._saved_page_states = []
+
+    def showPage(self):
+        self._saved_page_states.append(dict(self.__dict__))
+        self._startPage()
+
+    def save(self):
+        num_pages = len(self._saved_page_states)
+        for state in self._saved_page_states:
+            self.__dict__.update(state)
+            self.draw_page_number(num_pages)
+            canvas.Canvas.showPage(self)
+        canvas.Canvas.save(self)
+
+    def draw_page_number(self, page_count):
+        self.saveState()
+        self.setFont("HindiRegular", 8)
+        self.setFillColor(colors.HexColor("#475569"))
+        page_text = f"{self._pageNumber}"
+        # Centered page number at the bottom footer
+        self.drawCentredString(self._pagesize[0] / 2.0, 15, page_text)
+        self.restoreState()
 
 def generate_exampur_book(
     output_filename="exampress_final_book.pdf", 
@@ -24,14 +52,14 @@ def generate_exampur_book(
     # --- Advanced Spacing Controls (Hooked with Frontend Sliders) ---
     font_size=9.0,                 
     line_spacing=14.0,             
-    question_gap=12.0,             
-    option_top_gap=4.0,            
+    question_gap=10.0,             
+    option_top_gap=3.0,            
     column_gap_val=12.0,           
-    footer_bottom_margin=30.0,     
-    option_vertical_gap=2.5        
+    footer_bottom_margin=25.0,     
+    option_vertical_gap=2.0        
 ):
     """
-    Enterprise Layout Engine with Full-Width Title Page & Multi-Column Chapter Flow.
+    Enterprise Layout Engine: Starts directly from doc title on page 1 with multi-column flow & clean footers.
     """
     register_fonts()
 
@@ -42,8 +70,6 @@ def generate_exampur_book(
         
         book_data = {
             "title": canonical_data.get("title", "Exampress Practice Book"),
-            "publisher": "EXAMPUR PUBLICATION DIVISION",
-            "author": canonical_data.get("author", "Editorial Board (V2 Engine)"),
             "chapters": []
         }
         
@@ -53,14 +79,12 @@ def generate_exampur_book(
             
             for block in chap.get("blocks", []):
                 if block.get("type") == "question":
-                    q_no = block.get("q_no", 1)
                     ans_val = block.get("answer", "A")
                     exp_val = block.get("explanation", "").strip()
                     if not exp_val or "auto-generated" in exp_val.lower():
                         exp_val = "Verified by editorial board."
                     
                     formatted_questions.append({
-                        "q_no": q_no,
                         "question": block.get("text", ""),
                         "options": block.get("options", []),
                         "answer": ans_val,
@@ -68,7 +92,6 @@ def generate_exampur_book(
                     })
                     
                     chap_answer_key.append({
-                        "q": q_no,
                         "ans": ans_val,
                         "exp": exp_val
                     })
@@ -82,14 +105,11 @@ def generate_exampur_book(
     if not book_data or not book_data.get("chapters"):
         book_data = {
             "title": "Exampress General Studies & Reasoning Masterclass",
-            "publisher": "EXAMPUR PUBLICATION DIVISION",
-            "author": "Editorial Board (V2 Engine)",
             "chapters": [
                 {
                     "chapter_title": "Chapter 1: Quantitative Aptitude & Reasoning Mock Set",
                     "questions": [
                         {
-                            "q_no": 1,
                             "question": "Which institution is organizing the Critical Minerals Innovation Hackathon 2026?",
                             "options": ["[A] IICT / आईआईसीटी", "[B] JNARDDC, Nagpur", "[C] DRDO / डीआरडीओ", "[D] T-Hub / टी-हब"],
                             "answer": "[B]",
@@ -97,7 +117,7 @@ def generate_exampur_book(
                         }
                     ],
                     "answer_key": [
-                        {"q": 1, "ans": "[B]", "exp": "JNARDDC, Nagpur"}
+                        {"ans": "[B]", "exp": "JNARDDC, Nagpur"}
                     ]
                 }
             ]
@@ -112,22 +132,9 @@ def generate_exampur_book(
     if column_count not in [2, 3]:
         column_count = 2
 
-    # 1. Single Full-Width Frame for Cover / Title Header
-    frame_single = Frame(
-        margin, 
-        footer_bottom_margin, 
-        printable_width, 
-        printable_height, 
-        leftPadding=4, 
-        rightPadding=4, 
-        topPadding=4, 
-        bottomPadding=4,
-        id='single_col_frame'
-    )
-
-    # 2. Multi-Column Frames for Chapters & Content
+    # Multi-Column Frames starting directly from page 1 (No separate cover page)
     col_width = (printable_width - ((column_count - 1) * column_gap_val)) / column_count
-    frames_multi = []
+    frames = []
     for i in range(column_count):
         col_x = margin + i * (col_width + column_gap_val)
         frame = Frame(
@@ -135,38 +142,27 @@ def generate_exampur_book(
             footer_bottom_margin, 
             col_width, 
             printable_height, 
-            leftPadding=4, 
-            rightPadding=4, 
-            topPadding=4, 
-            bottomPadding=4,
+            leftPadding=3, 
+            rightPadding=3, 
+            topPadding=3, 
+            bottomPadding=3,
             id=f'col_{i+1}'
         )
-        frames_multi.append(frame)
+        frames.append(frame)
 
     doc = BaseDocTemplate(output_filename, pagesize=(page_width, page_height))
-    
-    template_single = PageTemplate(id='single_page', frames=[frame_single])
-    template_multi = PageTemplate(id='multi_col_page', frames=frames_multi)
-    doc.addPageTemplates([template_single, template_multi])
+    template = PageTemplate(id='multi_col_template', frames=frames)
+    doc.addPageTemplates([template])
 
     story = []
 
-    title_style = ParagraphStyle(
-        name='ExampurTitle',
-        fontName='HindiBold',
-        fontSize=18,
-        leading=22,
-        alignment=1, 
-        spaceAfter=15
-    )
-    
     chapter_style = ParagraphStyle(
         name='ExampurChapter',
         fontName='HindiBold',
-        fontSize=11,
-        leading=15,
-        spaceAfter=8,
-        spaceBefore=12
+        fontSize=10.5,
+        leading=14,
+        spaceAfter=6,
+        spaceBefore=8
     )
 
     question_style = ParagraphStyle(
@@ -186,32 +182,28 @@ def generate_exampur_book(
     )
 
     theme_accent = colors.HexColor('#047857' if book_type == "quiz" else ('#1d4ed8' if book_type == "theory" else '#b91c1c'))
-    
-    # Title Section on Full-Width Single Frame Page
-    story.append(Paragraph(book_data.get("publisher", "EXAMPUR PUBLICATION DIVISION"), ParagraphStyle(name='Pub', fontName='HindiBold', fontSize=10, alignment=1, textColor=theme_accent, spaceAfter=8)))
-    story.append(Paragraph(book_data.get("title"), title_style))
-    story.append(Spacer(1, 15))
-    
-    # Switch to Multi-Column template for the rest of the book
-    story.append(NextPageTemplate('multi_col_page'))
-    story.append(PageBreak())
 
-    # Chapters & Questions Loop with Chapter Page Breaks & Strict Block Separation
+    # Chapters & Questions Loop with Chapter Page Breaks & Automatic Sequential Numbering
     for index, chap in enumerate(book_data.get("chapters", [])):
         if index > 0:
             story.append(PageBreak())
             
+        # Chapter / Document Title Header
         story.append(Paragraph(chap.get("chapter_title"), chapter_style))
         
-        for q in chap.get("questions", []):
+        # Loop through questions with automatic clean serial numbering (Q.1, Q.2, ...)
+        for q_idx, q in enumerate(chap.get("questions", []), 1):
             q_elements = []
             
-            q_text = f"<b>Q.{q.get('q_no')}</b> {q.get('question')}"
+            # Question Block with automatic sequential numbering
+            q_text = f"<b>Q.{q_idx}</b> {q.get('question')}"
             q_elements.append(Paragraph(q_text, question_style))
             
+            # Options Block
             for opt in q.get("options", []):
                 q_elements.append(Paragraph(opt, option_style))
             
+            # Distinct Correct Answer Block
             if q.get('answer'):
                 ans_style = ParagraphStyle(
                     name='AnsStyle', 
@@ -219,11 +211,12 @@ def generate_exampur_book(
                     fontSize=font_size, 
                     leading=line_spacing, 
                     textColor=theme_accent, 
-                    spaceBefore=4, 
-                    spaceAfter=4
+                    spaceBefore=3, 
+                    spaceAfter=3
                 )
                 q_elements.append(Paragraph(f"Correct Answer: {q.get('answer')}", ans_style))
                 
+            # Explanation Block
             if book_type == "solutions" and q.get('explanation'):
                 exp_style = ParagraphStyle(
                     name='ExpStyle', 
@@ -239,11 +232,11 @@ def generate_exampur_book(
             q_elements.append(Spacer(1, question_gap))
             story.append(KeepTogether(q_elements))
 
-        story.append(Spacer(1, 8))
+        story.append(Spacer(1, 6))
 
-        # Chapter-End Answer Key Section
+        # Chapter-End Answer Key Section with synchronized sequential numbers
         if chap.get("answer_key"):
-            story.append(Spacer(1, 10))
+            story.append(Spacer(1, 8))
             story.append(Paragraph(f"Answer Key - {chap.get('chapter_title')}", chapter_style))
             
             th_style = ParagraphStyle(name='THStyle', fontName='HindiBold', fontSize=7.5, leading=10, textColor=colors.HexColor('#0f172a'))
@@ -255,12 +248,12 @@ def generate_exampur_book(
                 Paragraph("Explanation", th_style)
             ]]
             
-            for item in chap.get("answer_key", []):
+            for item_idx, item in enumerate(chap.get("answer_key", []), 1):
                 exp_text = item.get('exp', '')
                 if not exp_text or "auto-generated" in exp_text.lower():
                     exp_text = "Verified."
                 table_data.append([
-                    Paragraph(str(item.get('q')), td_style),
+                    Paragraph(str(item_idx), td_style),
                     Paragraph(str(item.get('ans')), td_style),
                     Paragraph(exp_text, td_style)
                 ])
@@ -272,12 +265,12 @@ def generate_exampur_book(
             ans_table = Table(table_data, colWidths=[col_q, col_ans, col_exp])
             ans_table.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f1f5f9')),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 4),
-                ('TOPPADDING', (0,0), (-1,-1), 4),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+                ('TOPPADDING', (0,0), (-1,-1), 3),
                 ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
                 ('VALIGN', (0,0), (-1,-1), 'TOP'),
             ]))
             story.append(ans_table)
 
-    doc.build(story)
+    doc.build(story, canvasmaker=NumberedCanvas)
     return output_filename
