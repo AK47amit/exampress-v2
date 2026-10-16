@@ -49,11 +49,11 @@ def generate_exampur_book(
     column_count=2,                
     font_size=9.0,                 
     line_spacing=14.0,             
-    question_gap=14.0,             # Questions ke beech me proper gap
-    option_top_gap=5.0,            # Question aur options ke beech gap
+    question_gap=14.0,             
+    option_top_gap=5.0,            
     column_gap_val=12.0,           
     footer_bottom_margin=25.0,     
-    option_vertical_gap=3.0        # Options ke beech me saaf gap
+    option_vertical_gap=3.0        
 ):
     register_fonts()
 
@@ -157,20 +157,21 @@ def generate_exampur_book(
         spaceBefore=8
     )
 
+    # Optimized leading and font settings for flawless Devanagari text rendering
     question_style = ParagraphStyle(
         name='ExampurQuestion',
         fontName='HindiBold',
         fontSize=font_size,
-        leading=line_spacing,          
+        leading=line_spacing + 1.5,          
         spaceAfter=option_top_gap,
-        spaceBefore=8                  # Har question ke upar extra breathing room
+        spaceBefore=8
     )
 
     option_style = ParagraphStyle(
         name='ExampurOption',
         fontName='HindiRegular',
         fontSize=font_size,
-        leading=line_spacing,
+        leading=line_spacing + 1.0,
         spaceAfter=option_vertical_gap 
     )
 
@@ -184,11 +185,9 @@ def generate_exampur_book(
         story.append(Paragraph(chapter_display_text, chapter_style))
         story.append(Spacer(1, 6))
         
-        # Har question ke liye automatic sequential numbering (Q.1, Q.2, Q.3...)
         for q_idx, q in enumerate(chap.get("questions", []), 1):
             q_elements = []
             
-            # Explicitly Q.{q_idx} format prefixing
             q_text = f"<b>Q.{q_idx}</b> {q.get('question')}"
             q_elements.append(Paragraph(q_text, question_style))
             
@@ -212,14 +211,13 @@ def generate_exampur_book(
                     name='ExpStyle', 
                     fontName='HindiRegular', 
                     fontSize=font_size - 0.5, 
-                    leading=line_spacing - 1.0, 
+                    leading=line_spacing, 
                     textColor=colors.HexColor('#475569'), 
                     spaceBefore=2, 
                     spaceAfter=3
                 )
                 q_elements.append(Paragraph(f"Exp: {q.get('explanation')}", exp_style))
 
-            # Question block ke baad clear gap taaki agla question chipke nahi
             q_elements.append(Spacer(1, question_gap))
             story.append(KeepTogether(q_elements))
 
