@@ -147,15 +147,14 @@ def generate_exampur_book(
 
     story = []
 
-    # Chapter Header Style spanning full width (using Table wrapper to span columns properly)
     chapter_style = ParagraphStyle(
         name='ExampurChapter',
         fontName='HindiBold',
-        fontSize=12,
-        leading=16,
+        fontSize=11,
+        leading=15,
         textColor=colors.HexColor('#0f172a'),
-        spaceAfter=10,
-        spaceBefore=10
+        spaceAfter=12,
+        spaceBefore=8
     )
 
     question_style = ParagraphStyle(
@@ -164,7 +163,7 @@ def generate_exampur_book(
         fontSize=font_size,
         leading=line_spacing,          
         spaceAfter=option_top_gap,
-        spaceBefore=6
+        spaceBefore=4
     )
 
     option_style = ParagraphStyle(
@@ -181,19 +180,9 @@ def generate_exampur_book(
         if index > 0:
             story.append(PageBreak())
             
-        # Explicit Chapter 1, Chapter 2 prefix with clean title
-        chapter_display_text = f"Chapter {index + 1}: {chap.get('chapter_title', 'Practice Set')}"
-        
-        # Wrap chapter title in a full-width table row so it breaks out of columns cleanly and acts as a proper banner header
-        chap_table = Table([[Paragraph(chapter_display_text, chapter_style)]], colWidths=[printable_width])
-        chap_table.setStyle(TableStyle([
-            ('BOTTOMPADDING', (0,0), (-1,-1), 6),
-            ('TOPPADDING', (0,0), (-1,-1), 6),
-            ('LINEBELOW', (0,0), (-1,-1), 1.5, colors.HexColor('#0f172a')),
-            ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#f8fafc')),
-        ]))
-        story.append(chap_table)
-        story.append(Spacer(1, 8))
+        chapter_display_text = f"<b>Chapter {index + 1}: {chap.get('chapter_title', 'Practice Set')}</b>"
+        story.append(Paragraph(chapter_display_text, chapter_style))
+        story.append(Spacer(1, 4))
         
         for q_idx, q in enumerate(chap.get("questions", []), 1):
             q_elements = []
@@ -234,7 +223,7 @@ def generate_exampur_book(
         story.append(Spacer(1, 10))
 
         if chap.get("answer_key"):
-            story.append(Paragraph(f"Answer Key - Chapter {index + 1}", chapter_style))
+            story.append(Paragraph(f"<b>Answer Key - Chapter {index + 1}</b>", chapter_style))
             
             th_style = ParagraphStyle(name='THStyle', fontName='HindiBold', fontSize=7.5, leading=10, textColor=colors.HexColor('#0f172a'))
             td_style = ParagraphStyle(name='TDStyle', fontName='HindiRegular', fontSize=7.5, leading=10, textColor=colors.HexColor('#334155'))
