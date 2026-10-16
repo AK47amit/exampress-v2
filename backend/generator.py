@@ -1,6 +1,6 @@
 import os
 from reportlab.lib.pagesizes import letter, B5
-from reportlab.platypus import BaseDocTemplate, PageTemplate, Frame, Paragraph, Spacer, Table, TableStyle, PageBreak
+from reportlab.platypus import BaseDocTemplate, PageTemplate, Frame, Paragraph, Spacer, Table, TableStyle, PageBreak, FrameBreak
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib import colors
 from reportlab.pdfbase import pdfmetrics
@@ -16,9 +16,6 @@ def register_fonts():
     pdfmetrics.registerFont(TTFont('HindiBold', bold_path))
 
 class NumberedCanvas(canvas.Canvas):
-    """
-    Clean Canvas: Strictly draws ONLY the page number at the bottom center of every page.
-    """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._saved_page_states = []
@@ -58,7 +55,7 @@ def generate_exampur_book(
     footer_bottom_margin=22.0,     
     top_header_margin=15.0,        
     option_vertical_gap=1.5,
-    # Frontend Toolbar Customization Parameters for Chapter Heading
+    # Frontend Toolbar Customization Parameters
     header_font_size=16.0,
     header_bold=True,
     header_italic=False,
@@ -128,31 +125,50 @@ def generate_exampur_book(
     
     margin = 20
     printable_width = page_width - (2 * margin)
-    printable_height = page_height - top_header_margin - footer_bottom_margin
+    
+    # Define layout heights
+    header_height = 35  # Dedicated height for chapter title banner at the top
+    content_height = page_height - margin - footer_bottom_margin - header_height - 10
 
     if column_count not in [2, 3]:
         column_count = 2
 
-    # Setting up standard Multi-Column Frames
+    # Frame 0: Top full-width frame exclusively for Chapter Heading
+    header_frame = Frame(
+        margin, 
+        page_height - margin - header_height, 
+        printable_width, 
+        header_height, 
+        leftPadding=0, 
+        rightPadding=0, 
+        topPadding=0, 
+        bottomPadding=0,
+        id='header_frame'
+    )
+
+    # Frames 1 & 2 (or 3): Multi-column frames starting below the header frame
     col_width = (printable_width - ((column_count - 1) * column_gap_val)) / column_count
-    frames = []
+    content_frames = []
     for i in range(column_count):
         col_x = margin + i * (col_width + column_gap_val)
         frame = Frame(
             col_x, 
             footer_bottom_margin, 
             col_width, 
-            printable_height, 
+            content_height, 
             leftPadding=1, 
             rightPadding=1, 
             topPadding=1, 
             bottomPadding=1,
             id=f'col_{i+1}'
         )
-        frames.append(frame)
+        content_frames.append(frame)
 
     doc = BaseDocTemplate(output_filename, pagesize=(page_width, page_height))
-    template = PageTemplate(id='multi_col_template', frames=frames)
+    
+    # PageTemplate containing both the header frame and multi-column content frames
+    all_frames = [header_frame] + content_frames
+    template = PageTemplate(id='exampur_layout', frames=all_frames)
     doc.addPageTemplates([template])
 
     story = []
@@ -166,7 +182,7 @@ def generate_exampur_book(
         leading=header_font_size + 4,
         textColor=colors.HexColor('#0f172a'),
         alignment=header_alignment,
-        spaceAfter=12,
+        spaceAfter=0,
         spaceBefore=0
     )
 
@@ -193,10 +209,12 @@ def generate_exampur_book(
         if index > 0:
             story.append(PageBreak())
             
-        # Chapter heading rendered cleanly at the start of each chapter
+        # 1. Add Chapter Heading -> Automatically routed to header_frame (top full-width banner)
         chap_title_str = f"Chapter {index + 1}: {chap.get('chapter_title', 'Practice Set')}"
         story.append(Paragraph(chap_title_str, chapter_style))
-        story.append(Spacer(1, 4))
+        
+        # 2. Force flow to jump from header_frame into the first multi-column content frame
+        story.append(FrameBreak())
         
         for q_idx, q in enumerate(chap.get("questions", []), 1):
             q_text = f"<b>Q.{q_idx}</b> {q.get('question')}"
