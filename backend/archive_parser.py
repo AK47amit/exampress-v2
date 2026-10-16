@@ -5,14 +5,9 @@ import re
 from parser import parse_uploaded_file
 
 def natural_sort_key(s):
-    """Strict natural numerical sorting so files order as 1, 2, ... 9, 10, 11 ... 19."""
     return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]
 
 def extract_and_parse_archive(archive_path: str, book_type: str, format_size: str, column_count: int = 2) -> dict:
-    """
-    Extracts ZIP archive, enforces strict natural numerical sorting for 1-19 files,
-    preserves original internal document titles, and builds a consolidated book schema.
-    """
     extracted_dir = tempfile.mkdtemp()
     
     try:
@@ -39,7 +34,6 @@ def extract_and_parse_archive(archive_path: str, book_type: str, format_size: st
         all_chapters = []
         master_title = "Exampress Master Consolidated Edition"
         
-        # Collect all valid document files recursively
         file_entries = []
         for root, dirs, files in os.walk(extracted_dir):
             for file in files:
@@ -54,7 +48,6 @@ def extract_and_parse_archive(archive_path: str, book_type: str, format_size: st
                 file_path = os.path.join(root, file)
                 file_entries.append((file, file_path))
 
-        # Sort files strictly using natural numerical order (1.docx, 2.docx ... 19.docx)
         file_entries.sort(key=lambda x: natural_sort_key(x[0]))
 
         for file, file_path in file_entries:
@@ -62,7 +55,12 @@ def extract_and_parse_archive(archive_path: str, book_type: str, format_size: st
             
             if ext in [".json", ".xlsx", ".xls", ".csv", ".docx", ".txt", ".pdf"]:
                 try:
-                    # Parse individual file into Canonical Schema format
+                    base_clean_name = re.sub(r'\.[^.]+$', '', file)
+                    display_title = re.sub(r'^(section\s*\d+[\:\-]?\s*)?(\d+[\.\-\s]*)?', '', base_clean_name, flags=re.IGNORECASE).strip()
+                    display_title = re.sub(r'\s*\(\d+\)\s*$', '', display_title).strip()
+                    if not display_title:
+                        display_title = base_clean_name if base_clean_name else "Practice Chapter"
+
                     parsed_book = parse_uploaded_file(
                         file_path=file_path,
                         file_extension=ext,
@@ -71,19 +69,25 @@ def extract_and_parse_archive(archive_path: str, book_type: str, format_size: st
                         column_count=column_count
                     )
                     
-                    # Extract chapters and blocks, preserving internal document title if available
+                    file_blocks = []
+                    detected_internal_title = ""
                     if isinstance(parsed_book, dict) and "chapters" in parsed_book:
                         for chap in parsed_book.get("chapters", []):
-                            internal_title = chap.get("chapter_title", "").strip()
-                            
-                            # Check if internal title is missing, generic, or has filename artifacts
-                            if not internal_title or "placeholder" in internal_title.lower() or ".docx" in internal_title.lower():
-                                base_clean_name = re.sub(r'\.[^.]+$', '', file)
-                                display_title = re.sub(r'^(section\s*\d+[\:\-]?\s*)?(\d+[\.\-\s]*)?', '', base_clean_name, flags=re.IGNORECASE).strip()
-                                display_title = re.sub(r'\s*\(\d+\)\s*$', '', display_title).strip()
-                                chap["chapter_title"] = display_title if display_title else base_clean_name
-                            
-                            all_chapters.append(chap)
+                            if not detected_internal_title and chap.get("chapter_title"):
+                                title_candidate = chap.get("chapter_title").strip()
+                                if title_candidate and "placeholder" not in title_candidate.lower() and ".docx" not in title_candidate.lower():
+                                    detected_internal_title = title_candidate
+                            if "blocks" in chap:
+                                file_blocks.extend(chap["blocks"])
+
+                    final_chap_title = detected_internal_title if detected_internal_title else display_title
+
+                    if file_blocks:
+                        consolidated_chapter = {
+                            "chapter_title": final_chap_title,
+                            "blocks": file_blocks
+                        }
+                        all_chapters.append(consolidated_chapter)
 
                 except Exception as sub_err:
                     print(f"Skipping inner file {file} due to parse error: {str(sub_err)}")
