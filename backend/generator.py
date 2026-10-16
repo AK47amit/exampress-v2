@@ -1,6 +1,6 @@
 import os
 from reportlab.lib.pagesizes import letter, B5
-from reportlab.platypus import BaseDocTemplate, PageTemplate, Frame, Paragraph, Spacer, Table, TableStyle, PageBreak, FrameBreak
+from reportlab.platypus import BaseDocTemplate, PageTemplate, Frame, Paragraph, Spacer, Table, TableStyle, PageBreak, FrameBreak, NextPageTemplate
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib import colors
 from reportlab.pdfbase import pdfmetrics
@@ -126,50 +126,55 @@ def generate_exampur_book(
     margin = 20
     printable_width = page_width - (2 * margin)
     
-    # Define layout heights
-    header_height = 35  # Dedicated height for chapter title banner at the top
-    content_height = page_height - margin - footer_bottom_margin - header_height - 10
+    # 1. First Page Layout Heights (With Header Banner)
+    header_height = 35
+    first_page_content_height = page_height - margin - footer_bottom_margin - header_height - 10
+
+    # 2. Subsequent Pages Layout Heights (Full height, no header banner)
+    subsequent_content_height = page_height - margin - footer_bottom_margin
 
     if column_count not in [2, 3]:
         column_count = 2
 
-    # Frame 0: Top full-width frame exclusively for Chapter Heading
+    # --- SETUP FRAMES FOR CHAPTER START PAGE ---
     header_frame = Frame(
         margin, 
         page_height - margin - header_height, 
         printable_width, 
         header_height, 
-        leftPadding=0, 
-        rightPadding=0, 
-        topPadding=0, 
-        bottomPadding=0,
+        leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0,
         id='header_frame'
     )
 
-    # Frames 1 & 2 (or 3): Multi-column frames starting below the header frame
+    first_page_content_frames = []
     col_width = (printable_width - ((column_count - 1) * column_gap_val)) / column_count
-    content_frames = []
     for i in range(column_count):
         col_x = margin + i * (col_width + column_gap_val)
         frame = Frame(
-            col_x, 
-            footer_bottom_margin, 
-            col_width, 
-            content_height, 
-            leftPadding=1, 
-            rightPadding=1, 
-            topPadding=1, 
-            bottomPadding=1,
-            id=f'col_{i+1}'
+            col_x, footer_bottom_margin, col_width, first_page_content_height, 
+            leftPadding=1, rightPadding=1, topPadding=1, bottomPadding=1,
+            id=f'first_col_{i+1}'
         )
-        content_frames.append(frame)
+        first_page_content_frames.append(frame)
+
+    # --- SETUP FRAMES FOR SUBSEQUENT PAGES ---
+    subsequent_frames = []
+    for i in range(column_count):
+        col_x = margin + i * (col_width + column_gap_val)
+        frame = Frame(
+            col_x, footer_bottom_margin, col_width, subsequent_content_height, 
+            leftPadding=1, rightPadding=1, topPadding=1, bottomPadding=1,
+            id=f'sub_col_{i+1}'
+        )
+        subsequent_frames.append(frame)
 
     doc = BaseDocTemplate(output_filename, pagesize=(page_width, page_height))
     
-    # PageTemplate containing both the header frame and multi-column content frames
-    all_frames = [header_frame] + content_frames
-    template = PageTemplate(id='exampur_layout', frames=all_frames)
-    doc.addPageTemplates([template])
+    # Register both templates
+    chapter_start_template = PageTemplate(id='chapter_start', frames=[header_frame] + first_page_content_frames)
+    subsequent_page_template = PageTemplate(id='subsequent_page', frames=subsequent_frames)
+    
+    doc.addPageTemplates([chapter_start_template, subsequent_page_template])
 
     story = []
 
@@ -209,13 +214,19 @@ def generate_exampur_book(
         if index > 0:
             story.append(PageBreak())
             
-        # 1. Add Chapter Heading -> Automatically routed to header_frame (top full-width banner)
+        # Switch explicitly to chapter_start template for the frontpage of each chapter
+        story.append(NextPageTemplate('chapter_start'))
+        
+        # 1. Add Chapter Heading -> Goes to header_frame on chapter_start template
         chap_title_str = f"Chapter {index + 1}: {chap.get('chapter_title', 'Practice Set')}"
         story.append(Paragraph(chap_title_str, chapter_style))
         
-        # 2. Force flow to jump from header_frame into the first multi-column content frame
+        # 2. Jump from header banner into the first multi-column content frame of chapter start page
         story.append(FrameBreak())
         
+        # Once content spills past page 1, automatically switch template to subsequent_page (no header banner)
+        story.append(NextPageTemplate('subsequent_page'))
+
         for q_idx, q in enumerate(chap.get("questions", []), 1):
             q_text = f"<b>Q.{q_idx}</b> {q.get('question')}"
             story.append(Paragraph(q_text, question_style))
