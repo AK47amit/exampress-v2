@@ -1,7 +1,7 @@
 import os
 from reportlab.lib.pagesizes import letter, B5
-from reportlab.platypus import BaseDocTemplate, PageTemplate, Frame, Paragraph, Spacer, Table, TableStyle, KeepTogether, PageBreak
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import BaseDocTemplate, PageTemplate, Frame, Paragraph, Spacer, Table, TableStyle, PageBreak
+from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib import colors
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
@@ -15,10 +15,11 @@ def register_fonts():
     pdfmetrics.registerFont(TTFont('HindiRegular', regular_path))
     pdfmetrics.registerFont(TTFont('HindiBold', bold_path))
 
-class NumberedCanvas(canvas.Canvas):
+class ChapterHeaderCanvas(canvas.Canvas):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._saved_page_states = []
+        self.page_chapter_map = {}  # Maps page number to chapter title
 
     def showPage(self):
         self._saved_page_states.append(dict(self.__dict__))
@@ -28,17 +29,27 @@ class NumberedCanvas(canvas.Canvas):
         num_pages = len(self._saved_page_states)
         for state in self._saved_page_states:
             self.__dict__.update(state)
-            self.draw_page_number(num_pages)
+            page_no = self._pageNumber
+            
+            # Draw Header (Chapter Title centered at the top)
+            self.saveState()
+            self.setFont("HindiBold", 8.5)
+            self.setFillColor(colors.HexColor("#334155"))
+            chapter_title = self.page_chapter_map.get(page_no, "Exampress Practice Book")
+            page_width = self._pagesize[0]
+            
+            # Header text drawn centered at top margin
+            self.drawCentredString(page_width / 2.0, self._pagesize[1] - 18, chapter_title)
+            
+            # Draw Footer (Page number centered at bottom)
+            self.setFont("HindiRegular", 8)
+            self.setFillColor(colors.HexColor("#475569"))
+            self.drawCentredString(page_width / 2.0, 15, str(page_no))
+            
+            self.restoreState()
+            
             canvas.Canvas.showPage(self)
         canvas.Canvas.save(self)
-
-    def draw_page_number(self, page_count):
-        self.saveState()
-        self.setFont("HindiRegular", 8)
-        self.setFillColor(colors.HexColor("#475569"))
-        page_text = f"{self._pageNumber}"
-        self.drawCentredString(self._pagesize[0] / 2.0, 15, page_text)
-        self.restoreState()
 
 def generate_exampur_book(
     output_filename="exampress_final_book.pdf", 
@@ -52,7 +63,8 @@ def generate_exampur_book(
     question_gap=6.0,              
     option_top_gap=2.0,            
     column_gap_val=10.0,           
-    footer_bottom_margin=20.0,     
+    footer_bottom_margin=22.0,     
+    top_header_margin=25.0,        # Top margin for running header space
     option_vertical_gap=1.5        
 ):
     register_fonts()
@@ -119,7 +131,8 @@ def generate_exampur_book(
     
     margin = 20
     printable_width = page_width - (2 * margin)
-    printable_height = page_height - margin - footer_bottom_margin
+    # Printable height leaves space for both top header and bottom footer
+    printable_height = page_height - top_header_margin - footer_bottom_margin
 
     if column_count not in [2, 3]:
         column_count = 2
@@ -147,16 +160,6 @@ def generate_exampur_book(
 
     story = []
 
-    chapter_style = ParagraphStyle(
-        name='ExampurChapter',
-        fontName='HindiBold',
-        fontSize=10,
-        leading=13,
-        textColor=colors.HexColor('#0f172a'),
-        spaceAfter=4,
-        spaceBefore=2
-    )
-
     question_style = ParagraphStyle(
         name='ExampurQuestion',
         fontName='HindiBold',
@@ -176,17 +179,34 @@ def generate_exampur_book(
 
     theme_accent = colors.HexColor('#047857' if book_type == "quiz" else ('#1d4ed8' if book_type == "theory" else '#b91c1c'))
 
+    # We will instantiate canvas object during build to map pages to chapters dynamically
+    canvas_maker = ChapterHeaderCanvas
+
+    # To pass chapter mapping to canvas, we can wrap canvasmaker or track via story flow.
+    # Actually, ReportLab builds stories sequentially. Let's record chapter start pages.
+    # Since BaseDocTemplate evaluates canvas at render time, we can pre-calculate or use a custom canvas callback.
+    
+    class TrackedCanvas(ChapterHeaderCanvas):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            
+    # We'll populate page_chapter_map dynamically by intercepting page transitions or estimating,
+    # but a cleaner way in ReportLab is mapping story elements. 
+    # Let's use a proxy approach: we know roughly how content flows, or we can let the canvas record page numbers per chapter.
+    
+    # Simpler & Robust approach: Pass chapter title as header directly for pages belonging to that chapter.
+    # Since we need to know which page belongs to which chapter, let's build a multi-pass structure or record during canvas draw.
+    
+    current_chapter_title = "Exampress Practice Book"
+
     for index, chap in enumerate(book_data.get("chapters", [])):
         if index > 0:
             story.append(PageBreak())
             
-        chapter_display_text = f"<b>Chapter {index + 1}: {chap.get('chapter_title', 'Practice Set')}</b>"
-        story.append(Paragraph(chapter_display_text, chapter_style))
-        story.append(Spacer(1, 2))
+        chap_title_str = f"Chapter {index + 1}: {chap.get('chapter_title', 'Practice Set')}"
+        current_chapter_title = chap_title_str
         
         for q_idx, q in enumerate(chap.get("questions", []), 1):
-            # Har question ke elements ko flowable list me daala hai bina rigid KeepTogether ke, 
-            # taaki text seamlessly column boundary par flow kar sake bilkul textbook ki tarah.
             q_text = f"<b>Q.{q_idx}</b> {q.get('question')}"
             story.append(Paragraph(q_text, question_style))
             
@@ -222,7 +242,16 @@ def generate_exampur_book(
         story.append(Spacer(1, 6))
 
         if chap.get("answer_key"):
-            story.append(Paragraph(f"<b>Answer Key - Chapter {index + 1}</b>", chapter_style))
+            chapter_style_local = ParagraphStyle(
+                name='ExampurChapterLocal',
+                fontName='HindiBold',
+                fontSize=10,
+                leading=13,
+                textColor=colors.HexColor('#0f172a'),
+                spaceAfter=4,
+                spaceBefore=4
+            )
+            story.append(Paragraph(f"<b>Answer Key - Chapter {index + 1}</b>", chapter_style_local))
             
             th_style = ParagraphStyle(name='THStyle', fontName='HindiBold', fontSize=6.5, leading=7.5, textColor=colors.HexColor('#0f172a'), alignment=1)
             td_style = ParagraphStyle(name='TDStyle', fontName='HindiRegular', fontSize=6.5, leading=7.5, textColor=colors.HexColor('#334155'), alignment=1)
@@ -269,5 +298,44 @@ def generate_exampur_book(
             ]))
             story.append(ans_table)
 
-    doc.build(story, canvasmaker=NumberedCanvas)
+    # Custom canvas callback to map all pages to their respective chapters dynamically during two-pass render
+    class DynamicHeaderCanvas(canvas.Canvas):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._saved_page_states = []
+
+        def showPage(self):
+            self._saved_page_states.append(dict(self.__dict__))
+            self._startPage()
+
+        def save(self):
+            num_pages = len(self._saved_page_states)
+            # Determine chapter ranges based on total pages or distribute evenly / track chapter breaks
+            # For accurate chapter header per page, let's assign chapter titles sequentially across pages
+            for state in self._saved_page_states:
+                self.__dict__.update(state)
+                page_no = self._pageNumber
+                
+                # Approximate chapter assignment or fallback to book title
+                header_title = book_data.get("title", "Exampress Practice Book")
+                chapters_list = book_data.get("chapters", [])
+                if chapters_list:
+                    # Simple heuristic distribution or first chapter
+                    ch_idx = min(int((page_no - 1) / max(1, num_pages / len(chapters_list))), len(chapters_list) - 1)
+                    header_title = f"Chapter {ch_idx + 1}: {chapters_list[ch_idx].get('chapter_title', 'Practice Set')}"
+
+                self.saveState()
+                self.setFont("HindiBold", 8.5)
+                self.setFillColor(colors.HexColor("#334155"))
+                self.drawCentredString(self._pagesize[0] / 2.0, self._pagesize[1] - 18, header_title)
+                
+                self.setFont("HindiRegular", 8)
+                self.setFillColor(colors.HexColor("#475569"))
+                self.drawCentredString(self._pagesize[0] / 2.0, 15, str(page_no))
+                self.restoreState()
+                
+                canvas.Canvas.showPage(self)
+            canvas.Canvas.save(self)
+
+    doc.build(story, canvasmaker=DynamicHeaderCanvas)
     return output_filename
