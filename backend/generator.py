@@ -157,7 +157,6 @@ def generate_exampur_book(
         spaceBefore=8
     )
 
-    # Optimized leading and font settings for flawless Devanagari text rendering
     question_style = ParagraphStyle(
         name='ExampurQuestion',
         fontName='HindiBold',
@@ -223,36 +222,52 @@ def generate_exampur_book(
 
         story.append(Spacer(1, 12))
 
+        # Ultra-Compact Multi-Column Answer Key Grid (5 Columns to save space)
         if chap.get("answer_key"):
             story.append(Paragraph(f"<b>Answer Key - Chapter {index + 1}</b>", chapter_style))
             
-            th_style = ParagraphStyle(name='THStyle', fontName='HindiBold', fontSize=8, leading=11, textColor=colors.HexColor('#0f172a'))
-            td_style = ParagraphStyle(name='TDStyle', fontName='HindiRegular', fontSize=8, leading=11, textColor=colors.HexColor('#334155'))
+            th_style = ParagraphStyle(name='THStyle', fontName='HindiBold', fontSize=7.0, leading=8, textColor=colors.HexColor('#0f172a'), alignment=1)
+            td_style = ParagraphStyle(name='TDStyle', fontName='HindiRegular', fontSize=7.0, leading=8, textColor=colors.HexColor('#334155'), alignment=1)
             
-            # Sirf 2 columns: Q aur Ans (Explanation column hata diya gaya hai)
-            table_data = [[
-                Paragraph("Q", th_style), 
-                Paragraph("Ans", th_style)
-            ]]
+            raw_answers = chap.get("answer_key", [])
+            num_cols = 5  # 5 side-by-side columns to pack maximum answers and save pages
             
-            for item_idx, item in enumerate(chap.get("answer_key", []), 1):
-                ans_text = str(item.get('ans', 'A')).strip()
-                table_data.append([
-                    Paragraph(str(item_idx), td_style),
-                    Paragraph(ans_text, td_style)
-                ])
+            header_row = []
+            for _ in range(num_cols):
+                header_row.extend([Paragraph("Q", th_style), Paragraph("Ans", th_style)])
             
-            col_q = 35
-            col_ans = printable_width - col_q
+            grid_data = [header_row]
             
-            ans_table = Table(table_data, colWidths=[col_q, col_ans])
+            for i in range(0, len(raw_answers), num_cols):
+                row_items = []
+                for j in range(num_cols):
+                    if i + j < len(raw_answers):
+                        item = raw_answers[i + j]
+                        q_num = str(i + j + 1)
+                        ans_val = str(item.get('ans', 'A')).strip()
+                        row_items.extend([
+                            Paragraph(q_num, td_style),
+                            Paragraph(ans_val, td_style)
+                        ])
+                    else:
+                        row_items.extend([Paragraph("", td_style), Paragraph("", td_style)])
+                grid_data.append(row_items)
+            
+            col_unit_width = printable_width / (num_cols * 2)
+            col_widths = []
+            for _ in range(num_cols):
+                col_widths.extend([col_unit_width * 0.45, col_unit_width * 0.55])
+            
+            ans_table = Table(grid_data, colWidths=col_widths)
             ans_table.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f1f5f9')),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 4),
-                ('TOPPADDING', (0,0), (-1,-1), 4),
-                ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
-                ('VALIGN', (0,0), (-1,-1), 'TOP'),
-                ('ALIGN', (1,0), (1,-1), 'LEFT'),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 1),  # Minimal padding to reduce row height
+                ('TOPPADDING', (0,0), (-1,-1), 1),
+                ('LEFTPADDING', (0,0), (-1,-1), 1),
+                ('RIGHTPADDING', (0,0), (-1,-1), 1),
+                ('GRID', (0,0), (-1,-1), 0.4, colors.HexColor('#cbd5e1')),
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                ('ALIGN', (0,0), (-1,-1), 'CENTER'),
             ]))
             story.append(ans_table)
 
