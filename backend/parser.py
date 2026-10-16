@@ -229,26 +229,33 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
             
             if paragraphs:
                 first_para = paragraphs[0]
-                # Check if first paragraph contains filename artifacts or path junk
-                if ".docx" in first_para.lower() or "section" in first_para.lower():
-                    # Extract text after hyphen if present, else clean it
-                    if "-" in first_para:
-                        doc_title = first_para.split("-")[-1].strip()
-                    else:
-                        doc_title = first_para
+                cleaned_title = first_para
+                
+                # Strip out any filename / section / .docx artifacts completely
+                if ".docx" in cleaned_title.lower() or "section" in cleaned_title.lower():
+                    # Remove anything up to '.docx - ' or similar patterns
+                    cleaned_title = re.sub(r'.*?\.docx\s*[\-\–\—]\s*', '', cleaned_title, flags=re.IGNORECASE)
+                    if "-" in cleaned_title and ("section" in first_para.lower() or ".docx" in first_para.lower()):
+                        parts = cleaned_title.split("-")
+                        cleaned_title = parts[-1].strip()
+                
+                # Additional cleanup for section prefixes if left over
+                cleaned_title = re.sub(r'^(section\s*\d+[\:\-]?\s*)?(\d+[\.\-\s]*)?', '', cleaned_title, flags=re.IGNORECASE).strip()
+                cleaned_title = re.sub(r'\s*\(\d+\)\s*$', '', cleaned_title).strip()
+                
+                is_question_or_opt = bool(re.search(r'^(q\.?\s*\d+|[\(\[]?[A-Da-d][\)\]]?|\d+[\.\)])', cleaned_title, re.IGNORECASE))
+                
+                if cleaned_title and len(cleaned_title) < 100 and not is_question_or_opt:
+                    doc_title = cleaned_title
                     lines_to_parse = paragraphs[1:]
                 else:
-                    is_question_or_opt = bool(re.search(r'^(q\.?\s*\d+|[\(\[]?[A-Da-d][\)\]]?|\d+[\.\)])', first_para, re.IGNORECASE))
-                    if len(first_para) < 100 and not is_question_or_opt:
-                        doc_title = first_para
-                        lines_to_parse = paragraphs[1:]
-                    else:
-                        base_name = os.path.basename(file_path)
-                        clean_title = re.sub(r'\.[^.]+$', '', base_name)
-                        clean_title = re.sub(r'^(section\s*\d+[\:\-]?\s*)?(\d+[\.\-\s]*)?', '', clean_title, flags=re.IGNORECASE).strip()
-                        clean_title = re.sub(r'\s*\(\d+\)\s*$', '', clean_title).strip()
-                        doc_title = clean_title if clean_title else "Practice Chapter"
-                        lines_to_parse = paragraphs
+                    # Fallback to clean filename title
+                    base_name = os.path.basename(file_path)
+                    clean_title = re.sub(r'\.[^.]+$', '', base_name)
+                    clean_title = re.sub(r'^(section\s*\d+[\:\-]?\s*)?(\d+[\.\-\s]*)?', '', clean_title, flags=re.IGNORECASE).strip()
+                    clean_title = re.sub(r'\s*\(\d+\)\s*$', '', clean_title).strip()
+                    doc_title = clean_title if clean_title else "Practice Chapter"
+                    lines_to_parse = paragraphs
                 
             blocks = parse_lines_into_blocks(lines_to_parse)
                 
