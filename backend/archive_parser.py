@@ -69,22 +69,16 @@ def extract_and_parse_archive(archive_path: str, book_type: str, format_size: st
                         column_count=column_count
                     )
                     
+                    # Saare internal sub-chapter blocks ko ek hi file ke liye merge karlo
                     file_blocks = []
-                    detected_internal_title = ""
                     if isinstance(parsed_book, dict) and "chapters" in parsed_book:
                         for chap in parsed_book.get("chapters", []):
-                            if not detected_internal_title and chap.get("chapter_title"):
-                                title_candidate = chap.get("chapter_title").strip()
-                                if title_candidate and "placeholder" not in title_candidate.lower() and ".docx" not in title_candidate.lower():
-                                    detected_internal_title = title_candidate
                             if "blocks" in chap:
                                 file_blocks.extend(chap["blocks"])
 
-                    final_chap_title = detected_internal_title if detected_internal_title else display_title
-
                     if file_blocks:
                         consolidated_chapter = {
-                            "chapter_title": final_chap_title,
+                            "chapter_title": display_title,
                             "blocks": file_blocks
                         }
                         all_chapters.append(consolidated_chapter)
