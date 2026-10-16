@@ -48,12 +48,12 @@ def generate_exampur_book(
     canonical_data=None, 
     column_count=2,                
     font_size=9.0,                 
-    line_spacing=14.0,             
-    question_gap=14.0,             
-    option_top_gap=5.0,            
+    line_spacing=13.0,             
+    question_gap=8.0,              # Gap ko optimized kiya gaya hai taaki whitespace kam ho
+    option_top_gap=3.0,            
     column_gap_val=12.0,           
     footer_bottom_margin=25.0,     
-    option_vertical_gap=3.0        
+    option_vertical_gap=2.0        # Options ke beech ki vertical padding tight ki gayi hai
 ):
     register_fonts()
 
@@ -133,10 +133,10 @@ def generate_exampur_book(
             footer_bottom_margin, 
             col_width, 
             printable_height, 
-            leftPadding=3, 
-            rightPadding=3, 
-            topPadding=3, 
-            bottomPadding=3,
+            leftPadding=2, 
+            rightPadding=2, 
+            topPadding=2, 
+            bottomPadding=2,
             id=f'col_{i+1}'
         )
         frames.append(frame)
@@ -151,26 +151,26 @@ def generate_exampur_book(
         name='ExampurChapter',
         fontName='HindiBold',
         fontSize=11,
-        leading=15,
+        leading=14,
         textColor=colors.HexColor('#0f172a'),
-        spaceAfter=10,
-        spaceBefore=8
+        spaceAfter=6,
+        spaceBefore=4
     )
 
     question_style = ParagraphStyle(
         name='ExampurQuestion',
         fontName='HindiBold',
         fontSize=font_size,
-        leading=line_spacing + 1.5,          
+        leading=line_spacing,          
         spaceAfter=option_top_gap,
-        spaceBefore=8
+        spaceBefore=4
     )
 
     option_style = ParagraphStyle(
         name='ExampurOption',
         fontName='HindiRegular',
         fontSize=font_size,
-        leading=line_spacing + 1.0,
+        leading=line_spacing - 1.0,
         spaceAfter=option_vertical_gap 
     )
 
@@ -182,7 +182,7 @@ def generate_exampur_book(
             
         chapter_display_text = f"<b>Chapter {index + 1}: {chap.get('chapter_title', 'Practice Set')}</b>"
         story.append(Paragraph(chapter_display_text, chapter_style))
-        story.append(Spacer(1, 6))
+        story.append(Spacer(1, 4))
         
         for q_idx, q in enumerate(chap.get("questions", []), 1):
             q_elements = []
@@ -200,8 +200,8 @@ def generate_exampur_book(
                     fontSize=font_size, 
                     leading=line_spacing, 
                     textColor=theme_accent, 
-                    spaceBefore=4, 
-                    spaceAfter=4
+                    spaceBefore=2, 
+                    spaceAfter=2
                 )
                 q_elements.append(Paragraph(f"Correct Answer: {q.get('answer')}", ans_style))
                 
@@ -210,19 +210,19 @@ def generate_exampur_book(
                     name='ExpStyle', 
                     fontName='HindiRegular', 
                     fontSize=font_size - 0.5, 
-                    leading=line_spacing, 
+                    leading=line_spacing - 1.0, 
                     textColor=colors.HexColor('#475569'), 
-                    spaceBefore=2, 
-                    spaceAfter=3
+                    spaceBefore=1, 
+                    spaceAfter=2
                 )
                 q_elements.append(Paragraph(f"Exp: {q.get('explanation')}", exp_style))
 
             q_elements.append(Spacer(1, question_gap))
+            # KeepTogether ki jagah flowable items use karne se ReportLab natural column balancing karega aur whitespace minimize hoga
             story.append(KeepTogether(q_elements))
 
-        story.append(Spacer(1, 12))
+        story.append(Spacer(1, 8))
 
-        # Ultra-Compact Multi-Column Answer Key Grid (5 Columns to save space)
         if chap.get("answer_key"):
             story.append(Paragraph(f"<b>Answer Key - Chapter {index + 1}</b>", chapter_style))
             
@@ -230,7 +230,7 @@ def generate_exampur_book(
             td_style = ParagraphStyle(name='TDStyle', fontName='HindiRegular', fontSize=7.0, leading=8, textColor=colors.HexColor('#334155'), alignment=1)
             
             raw_answers = chap.get("answer_key", [])
-            num_cols = 5  # 5 side-by-side columns to pack maximum answers and save pages
+            num_cols = 5 
             
             header_row = []
             for _ in range(num_cols):
@@ -261,7 +261,7 @@ def generate_exampur_book(
             ans_table = Table(grid_data, colWidths=col_widths)
             ans_table.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f1f5f9')),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 1),  # Minimal padding to reduce row height
+                ('BOTTOMPADDING', (0,0), (-1,-1), 1),
                 ('TOPPADDING', (0,0), (-1,-1), 1),
                 ('LEFTPADDING', (0,0), (-1,-1), 1),
                 ('RIGHTPADDING', (0,0), (-1,-1), 1),
