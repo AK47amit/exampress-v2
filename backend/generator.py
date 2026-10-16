@@ -49,11 +49,11 @@ def generate_exampur_book(
     column_count=2,                
     font_size=9.0,                 
     line_spacing=14.0,             
-    question_gap=12.0,             
-    option_top_gap=4.0,            
+    question_gap=14.0,             # Questions ke beech me proper gap
+    option_top_gap=5.0,            # Question aur options ke beech gap
     column_gap_val=12.0,           
     footer_bottom_margin=25.0,     
-    option_vertical_gap=2.5        
+    option_vertical_gap=3.0        # Options ke beech me saaf gap
 ):
     register_fonts()
 
@@ -153,8 +153,8 @@ def generate_exampur_book(
         fontSize=11,
         leading=15,
         textColor=colors.HexColor('#0f172a'),
-        spaceAfter=8,
-        spaceBefore=6
+        spaceAfter=10,
+        spaceBefore=8
     )
 
     question_style = ParagraphStyle(
@@ -163,7 +163,7 @@ def generate_exampur_book(
         fontSize=font_size,
         leading=line_spacing,          
         spaceAfter=option_top_gap,
-        spaceBefore=6
+        spaceBefore=8                  # Har question ke upar extra breathing room
     )
 
     option_style = ParagraphStyle(
@@ -184,9 +184,11 @@ def generate_exampur_book(
         story.append(Paragraph(chapter_display_text, chapter_style))
         story.append(Spacer(1, 6))
         
+        # Har question ke liye automatic sequential numbering (Q.1, Q.2, Q.3...)
         for q_idx, q in enumerate(chap.get("questions", []), 1):
             q_elements = []
             
+            # Explicitly Q.{q_idx} format prefixing
             q_text = f"<b>Q.{q_idx}</b> {q.get('question')}"
             q_elements.append(Paragraph(q_text, question_style))
             
@@ -200,8 +202,8 @@ def generate_exampur_book(
                     fontSize=font_size, 
                     leading=line_spacing, 
                     textColor=theme_accent, 
-                    spaceBefore=3, 
-                    spaceAfter=3
+                    spaceBefore=4, 
+                    spaceAfter=4
                 )
                 q_elements.append(Paragraph(f"Correct Answer: {q.get('answer')}", ans_style))
                 
@@ -213,14 +215,15 @@ def generate_exampur_book(
                     leading=line_spacing - 1.0, 
                     textColor=colors.HexColor('#475569'), 
                     spaceBefore=2, 
-                    spaceAfter=2
+                    spaceAfter=3
                 )
                 q_elements.append(Paragraph(f"Exp: {q.get('explanation')}", exp_style))
 
+            # Question block ke baad clear gap taaki agla question chipke nahi
             q_elements.append(Spacer(1, question_gap))
             story.append(KeepTogether(q_elements))
 
-        story.append(Spacer(1, 8))
+        story.append(Spacer(1, 12))
 
         if chap.get("answer_key"):
             story.append(Paragraph(f"<b>Answer Key - Chapter {index + 1}</b>", chapter_style))
