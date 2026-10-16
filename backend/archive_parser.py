@@ -11,7 +11,7 @@ def natural_sort_key(s):
 def extract_and_parse_archive(archive_path: str, book_type: str, format_size: str, column_count: int = 2) -> dict:
     """
     Extracts ZIP archive, enforces strict natural numerical sorting for 1-19 files,
-    treats each file as a distinct chapter with clean filename-derived titles, and builds a consolidated book schema.
+    preserves original internal document titles, and builds a consolidated book schema.
     """
     extracted_dir = tempfile.mkdtemp()
     
@@ -45,7 +45,6 @@ def extract_and_parse_archive(archive_path: str, book_type: str, format_size: st
             for file in files:
                 if file.startswith('.') or '__MACOSX' in root:
                     file_path = os.path.join(root, file)
-                    # Clean up hidden files immediately
                     try:
                         os.remove(file_path)
                     except Exception:
@@ -63,14 +62,6 @@ def extract_and_parse_archive(archive_path: str, book_type: str, format_size: st
             
             if ext in [".json", ".xlsx", ".xls", ".csv", ".docx", ".txt", ".pdf"]:
                 try:
-                    # Derive clean chapter title directly from the filename to prevent merging or parsing garbage
-                    base_clean_name = re.sub(r'\.[^.]+$', '', file)
-                    # Strip leading numbering like "1.", "Section 1:", etc. for a clean presentation title
-                    display_title = re.sub(r'^(section\s*\d+[\:\-]?\s*)?(\d+[\.\-\s]*)?', '', base_clean_name, flags=re.IGNORECASE).strip()
-                    display_title = re.sub(r'\s*\(\d+\)\s*$', '', display_title).strip()
-                    if not display_title:
-                        display_title = base_clean_name if base_clean_name else "Practice Chapter"
-
                     # Parse individual file into Canonical Schema format
                     parsed_book = parse_uploaded_file(
                         file_path=file_path,
@@ -80,21 +71,19 @@ def extract_and_parse_archive(archive_path: str, book_type: str, format_size: st
                         column_count=column_count
                     )
                     
-                    # Extract blocks from the parsed book
-                    file_blocks = []
+                    # Extract chapters and blocks, preserving internal document title if available
                     if isinstance(parsed_book, dict) and "chapters" in parsed_book:
                         for chap in parsed_book.get("chapters", []):
-                            if "blocks" in chap:
-                                file_blocks.extend(chap["blocks"])
-
-                    # If blocks were successfully parsed, enforce them into a single clean chapter for this specific file
-                    if file_blocks:
-                        # Re-number question blocks sequentially if needed or keep them robust
-                        consolidated_chapter = {
-                            "chapter_title": display_title,
-                            "blocks": file_blocks
-                        }
-                        all_chapters.append(consolidated_chapter)
+                            internal_title = chap.get("chapter_title", "").strip()
+                            
+                            # Check if internal title is missing, generic, or has filename artifacts
+                            if not internal_title or "placeholder" in internal_title.lower() or ".docx" in internal_title.lower():
+                                base_clean_name = re.sub(r'\.[^.]+$', '', file)
+                                display_title = re.sub(r'^(section\s*\d+[\:\-]?\s*)?(\d+[\.\-\s]*)?', '', base_clean_name, flags=re.IGNORECASE).strip()
+                                display_title = re.sub(r'\s*\(\d+\)\s*$', '', display_title).strip()
+                                chap["chapter_title"] = display_title if display_title else base_clean_name
+                            
+                            all_chapters.append(chap)
 
                 except Exception as sub_err:
                     print(f"Skipping inner file {file} due to parse error: {str(sub_err)}")
