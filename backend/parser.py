@@ -27,11 +27,8 @@ class Chapter(BaseModel):
     def validate_question_blocks(cls, blocks: List[QuestionBlock]) -> List[QuestionBlock]:
         if not blocks:
             raise ValueError("Chapter cannot be empty. At least one question block is required.")
-        
-        # Automatically re-sequence question numbers cleanly 1, 2, 3...
         for idx, block in enumerate(blocks, 1):
             block.q_no = idx
-            
         return blocks
 
 class CanonicalBookSchema(BaseModel):
@@ -51,7 +48,6 @@ class CanonicalBookSchema(BaseModel):
 
 
 def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
-    """Strictly segments questions by detecting question markers, options, and answers."""
     blocks = []
     q_count = 1
     
@@ -60,8 +56,8 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
     current_answer = "A"
     current_exp = ""
     
-    # Precise regex to catch question headers like Q.1, 1., Q1, etc.
-    q_pattern = re.compile(r'^(?:q\.?\s*\d+|question\s*\d+|\d+[\.\)])\s*(.*)', re.IGNORECASE)
+    # Universal regex to catch question starts like Q.1, Q1, 1., etc anywhere in text flow
+    q_start_pattern = re.compile(r'(?:^|\s+)(?:q\.?\s*(\d+)|\bquestion\s*(\d+)|\b(\d+)\s*\.\s*)(?=[अ-हक-ज्ञA-Za-z])', re.IGNORECASE)
     opt_pattern = re.compile(r'^([\(\[]?[A-Da-d][\)\]]?|\[?[A-Da-d]\])\s*[\.\-]?\s*(.+)')
     ans_pattern = re.compile(r'^(?:answer|ans|उत्तर)\s*[:\-]?\s*[\(\[]?([A-Da-d])[\)\]]?', re.IGNORECASE)
     ans_fallback_pattern = re.compile(r'^(?:answer|ans|उत्तर)\s*[:\-]\s*(.*)', re.IGNORECASE)
@@ -86,12 +82,31 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
             current_answer = "A"
             current_exp = ""
 
-    for text in lines:
+    # Flatten lines if paragraphs contain multiple concatenated questions
+    processed_lines = []
+    for line in lines:
+        parts = q_start_pattern.split(line)
+        if len(parts) > 1:
+            # Reconstruct split parts with their question numbers
+            reconstructed = parts[0]
+            if reconstructed.strip():
+                processed_lines.append(reconstructed.strip())
+            for i in range(1, len(parts), 4):
+                q_num = parts[i] or parts[i+1] or parts[i+2]
+                rest = parts[i+3] if i+3 < len(parts) else ""
+                if q_num:
+                    processed_lines.append(f"Q.{q_num} {rest}".strip())
+                elif rest.strip():
+                    processed_lines.append(rest.strip())
+        else:
+            processed_lines.append(line)
+
+    for text in processed_lines:
         text = text.strip()
         if not text:
             continue
 
-        q_match = q_pattern.match(text)
+        q_match = re.match(r'^(?:q\.?\s*\d+|question\s*\d+|\d+[\.\)])\s*(.*)', text, re.IGNORECASE)
         opt_match = opt_pattern.match(text)
         ans_match = ans_pattern.match(text)
         ans_fallback_match = ans_fallback_pattern.match(text)
@@ -99,7 +114,6 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
 
         if q_match:
             flush_block()
-            # Extract the actual question text following the Q.x or number prefix
             q_text_content = q_match.group(1).strip()
             current_question = q_text_content if q_text_content else text
 
@@ -124,7 +138,6 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
             current_exp = exp_match.group(1).strip()
 
         else:
-            # Append trailing text to current option, question, or start a new question if text looks like a standalone question line
             if current_options:
                 current_options[-1] += " " + text
             elif current_question:
