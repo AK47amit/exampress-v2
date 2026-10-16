@@ -30,7 +30,9 @@ class Chapter(BaseModel):
         
         q_numbers = [b.q_no for b in blocks]
         if len(q_numbers) != len(set(q_numbers)):
-            raise ValueError("Validation Error: Duplicate question numbers detected in chapter sequence.")
+            # Normalize sequence numbering automatically if duplicates or jumps happen
+            for idx, block in enumerate(blocks, 1):
+                block.q_no = idx
             
         return blocks
 
@@ -51,20 +53,40 @@ class CanonicalBookSchema(BaseModel):
 
 
 def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
-    """Helper function to strictly segregate Questions, Options, Answers and Explanations with automatic numbering starting from 1."""
+    """Robust parser helper to segregate Questions, Options, Answers and Explanations cleanly with automatic sequence numbering."""
     blocks = []
     q_count = 1
     
-    current_question = None
+    current_question = ""
     current_options = []
     current_answer = "A"
     current_exp = ""
     
+    # Enhanced patterns for questions, options, answers (English & Hindi)
     q_pattern = re.compile(r'^(q\.?\s*\d+[\.\)]?|\d+[\.\)]\s*|\bquestion\b\s*\d+)', re.IGNORECASE)
-    opt_pattern = re.compile(r'^[\(\[]?\s*([A-Da-d])[\)\]]?\s*[\.\-]?\s*(.+)')
+    opt_pattern = re.compile(r'^([\(\[]?[A-Da-d][\)\]]?|\[?[A-Da-d]\])\s*[\.\-]?\s*(.+)')
     ans_pattern = re.compile(r'^(answer|ans|उत्तर)\s*[:\-]?\s*[\(\[]?([A-Da-d])[\)\]]?', re.IGNORECASE)
     ans_fallback_pattern = re.compile(r'^(answer|ans|उत्तर)\s*[:\-]\s*(.*)', re.IGNORECASE)
-    exp_pattern = re.compile(r'^(explanation|exp)\s*[:\-]\s*(.*)', re.IGNORECASE)
+    exp_pattern = re.compile(r'^(explanation|exp|स्पष्टीकरण)\s*[:\-]\s*(.*)', re.IGNORECASE)
+
+    def flush_current_block():
+        nonlocal current_question, current_options, current_answer, current_exp, q_count
+        if current_question.strip():
+            if not current_options:
+                current_options = ["[A] Option A", "[B] Option B", "[C] Option C", "[D] Option D"]
+            
+            blocks.append(QuestionBlock(
+                q_no=q_count,
+                text=current_question.strip(),
+                options=current_options,
+                answer=current_answer.strip() if current_answer else "A",
+                explanation=current_exp.strip()
+            ))
+            q_count += 1
+            current_question = ""
+            current_options = []
+            current_answer = "A"
+            current_exp = ""
 
     for text in lines:
         text = text.strip()
@@ -78,22 +100,10 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
         q_match = q_pattern.match(text)
 
         if q_match and not opt_match:
-            if current_question:
-                if not current_options:
-                    current_options = ["[A] Option 1", "[B] Option 2", "[C] Option 3", "[D] Option 4"]
-                blocks.append(QuestionBlock(
-                    q_no=q_count,
-                    text=q_pattern.sub('', current_question).strip() or current_question.strip(),
-                    options=current_options,
-                    answer=current_answer.strip() if current_answer else "A",
-                    explanation=current_exp.strip()
-                ))
-                q_count += 1
-            
-            current_question = text
-            current_options = []
-            current_answer = "A"
-            current_exp = ""
+            flush_current_block()
+            current_question = q_pattern.sub('', text).strip()
+            if not current_question:
+                current_question = text
 
         elif opt_match:
             current_options.append(text)
@@ -121,36 +131,15 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
             elif current_question:
                 current_question += " " + text
             else:
-                if current_question:
-                    blocks.append(QuestionBlock(
-                        q_no=q_count,
-                        text=current_question.strip(),
-                        options=current_options or ["[A] Option 1", "[B] Option 2", "[C] Option 3", "[D] Option 4"],
-                        answer=current_answer,
-                        explanation=current_exp
-                    ))
-                    q_count += 1
                 current_question = text
-                current_options = []
-                current_answer = "A"
-                current_exp = ""
 
-    if current_question:
-        if not current_options:
-            current_options = ["[A] Option 1", "[B] Option 2", "[C] Option 3", "[D] Option 4"]
-        blocks.append(QuestionBlock(
-            q_no=q_count,
-            text=current_question.strip(),
-            options=current_options,
-            answer=current_answer.strip() if current_answer else "A",
-            explanation=current_exp.strip()
-        ))
+    flush_current_block()
 
     if not blocks:
         blocks.append(QuestionBlock(
             q_no=1, 
             text="Parsed document content placeholder.",
-            options=["[A] Alpha", "[B] Beta", "[C] Gamma", "[D] Delta"],
+            options=["[A] Option 1", "[B] Option 2", "[C] Option 3", "[D] Option 4"],
             answer="A", 
             explanation="Auto-generated explanation."
         ))
@@ -231,15 +220,12 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
                 first_para = paragraphs[0]
                 cleaned_title = first_para
                 
-                # Strip out any filename / section / .docx artifacts completely
                 if ".docx" in cleaned_title.lower() or "section" in cleaned_title.lower():
-                    # Remove anything up to '.docx - ' or similar patterns
                     cleaned_title = re.sub(r'.*?\.docx\s*[\-\–\—]\s*', '', cleaned_title, flags=re.IGNORECASE)
                     if "-" in cleaned_title and ("section" in first_para.lower() or ".docx" in first_para.lower()):
                         parts = cleaned_title.split("-")
                         cleaned_title = parts[-1].strip()
                 
-                # Additional cleanup for section prefixes if left over
                 cleaned_title = re.sub(r'^(section\s*\d+[\:\-]?\s*)?(\d+[\.\-\s]*)?', '', cleaned_title, flags=re.IGNORECASE).strip()
                 cleaned_title = re.sub(r'\s*\(\d+\)\s*$', '', cleaned_title).strip()
                 
@@ -249,7 +235,6 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
                     doc_title = cleaned_title
                     lines_to_parse = paragraphs[1:]
                 else:
-                    # Fallback to clean filename title
                     base_name = os.path.basename(file_path)
                     clean_title = re.sub(r'\.[^.]+$', '', base_name)
                     clean_title = re.sub(r'^(section\s*\d+[\:\-]?\s*)?(\d+[\.\-\s]*)?', '', clean_title, flags=re.IGNORECASE).strip()
