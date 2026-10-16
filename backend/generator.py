@@ -15,15 +15,14 @@ def register_fonts():
     pdfmetrics.registerFont(TTFont('HindiRegular', regular_path))
     pdfmetrics.registerFont(TTFont('HindiBold', bold_path))
 
-class ChapterHeaderCanvas(canvas.Canvas):
+class NumberedCanvas(canvas.Canvas):
     """
-    Strict Header Canvas: Draws the Chapter Title in the top header space 
-    ONLY on the first page of each chapter, and page numbers at the bottom.
+    Clean Canvas: Strictly draws ONLY the page number at the bottom center of every page.
+    No unwanted running headers.
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._saved_page_states = []
-        self.chapter_pages = {} # maps page number to chapter title for frontpages
 
     def showPage(self):
         self._saved_page_states.append(dict(self.__dict__))
@@ -34,23 +33,12 @@ class ChapterHeaderCanvas(canvas.Canvas):
         for state in self._saved_page_states:
             self.__dict__.update(state)
             page_no = self._pageNumber
-            page_width, page_height = self._pagesize
             
             self.saveState()
-            
-            # If this page is a chapter starting page, draw the chapter title in the top header area
-            if page_no in self.chapter_pages:
-                chap_title = self.chapter_pages[page_no]
-                self.setFont("HindiBold", 11)
-                self.setFillColor(colors.HexColor("#0f172a"))
-                # Drawn centered in the top header area
-                self.drawCentredString(page_width / 2.0, page_height - 25, chap_title)
-            
-            # Draw Footer (Page number centered at bottom on all pages)
             self.setFont("HindiRegular", 8)
             self.setFillColor(colors.HexColor("#475569"))
+            page_width = self._pagesize[0]
             self.drawCentredString(page_width / 2.0, 15, str(page_no))
-            
             self.restoreState()
             
             canvas.Canvas.showPage(self)
@@ -69,13 +57,13 @@ def generate_exampur_book(
     option_top_gap=2.0,            
     column_gap_val=10.0,           
     footer_bottom_margin=22.0,     
-    top_header_margin=35.0,        # Increased top margin to give full header space for chapter title
+    top_header_margin=15.0,        
     option_vertical_gap=1.5,
-    # Frontend Toolbar Customization Parameters
-    header_font_size=11.0,
+    # Frontend Toolbar Customization Parameters for Chapter Heading
+    header_font_size=16.0,
     header_bold=True,
     header_italic=False,
-    header_alignment=1             # Center alignment by default for header
+    header_alignment=0             # 0: Left, 1: Center, 2: Right
 ):
     register_fonts()
 
@@ -169,6 +157,19 @@ def generate_exampur_book(
 
     story = []
 
+    # Toolbar-driven Chapter Heading Style
+    font_name_map = "HindiBold" if header_bold else "HindiRegular"
+    chapter_style = ParagraphStyle(
+        name='ExampurChapterCustom',
+        fontName=font_name_map,
+        fontSize=header_font_size,
+        leading=header_font_size + 4,
+        textColor=colors.HexColor('#0f172a'),
+        alignment=header_alignment,
+        spaceAfter=10,
+        spaceBefore=0
+    )
+
     question_style = ParagraphStyle(
         name='ExampurQuestion',
         fontName='HindiBold',
@@ -188,24 +189,14 @@ def generate_exampur_book(
 
     theme_accent = colors.HexColor('#047857' if book_type == "quiz" else ('#1d4ed8' if book_type == "theory" else '#b91c1c'))
 
-    # We use a custom canvas instance to dynamically record which page corresponds to which chapter start
-    canvas_instance = ChapterHeaderCanvas(output_filename, pagesize=(page_width, page_height))
-    
-    # Pre-simulate or track page numbers during story building
-    # Since each chapter starts with a PageBreak (after index 0), we can estimate or intercept page triggers.
-    # To make it bulletproof, let's inject a Flowable callback or record page breaks.
-    
-    current_page_counter = 1
-    
     for index, chap in enumerate(book_data.get("chapters", [])):
         if index > 0:
             story.append(PageBreak())
-            current_page_counter += 1  # Page increments on break
             
+        # Chapter heading rendered strictly ONCE at the top of the chapter's main starting page via story flow
         chap_title_str = f"Chapter {index + 1}: {chap.get('chapter_title', 'Practice Set')}"
-        
-        # Register this page as the chapter start page in our canvas mapper
-        canvas_instance.chapter_pages[current_page_counter] = chap_title_str
+        story.append(Paragraph(chap_title_str, chapter_style))
+        story.append(Spacer(1, 6))
         
         for q_idx, q in enumerate(chap.get("questions", []), 1):
             q_text = f"<b>Q.{q_idx}</b> {q.get('question')}"
@@ -245,10 +236,11 @@ def generate_exampur_book(
         if chap.get("answer_key"):
             chapter_style_local = ParagraphStyle(
                 name='ExampurChapterLocal',
-                fontName='HindiBold',
+                fontName=font_name_map,
                 fontSize=10,
                 leading=13,
                 textColor=colors.HexColor('#0f172a'),
+                alignment=header_alignment,
                 spaceAfter=4,
                 spaceBefore=4
             )
@@ -299,48 +291,5 @@ def generate_exampur_book(
             ]))
             story.append(ans_table)
 
-    # Use a custom flowable wrapper to dynamically capture exact page numbers during canvas building
-    class DynamicChapterCanvas(canvas.Canvas):
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-            self._saved_page_states = []
-
-        def showPage(self):
-            self._saved_page_states.append(dict(self.__dict__))
-            self._startPage()
-
-        def save(self):
-            num_pages = len(self._saved_page_states)
-            for state in self._saved_page_states:
-                self.__dict__.update(state)
-                page_no = self._pageNumber
-                page_width, page_height = self._pagesize
-                
-                self.saveState()
-                
-                # Draw chapter header ONLY on the exact first page of each chapter
-                if page_no in canvas_instance.chapter_pages:
-                    chap_title = canvas_instance.chapter_pages[page_no]
-                    self.setFont("HindiBold", header_font_size)
-                    self.setFillColor(colors.HexColor("#0f172a"))
-                    
-                    # Alignment logic: 0 = Left, 1 = Center, 2 = Right
-                    if header_alignment == 0:
-                        self.drawString(margin, page_height - 25, chap_title)
-                    elif header_alignment == 2:
-                        self.drawRightString(page_width - margin, page_height - 25, chap_title)
-                    else:
-                        self.drawCentredString(page_width / 2.0, page_height - 25, chap_title)
-                
-                # Draw Footer (Page Number) on all pages
-                self.setFont("HindiRegular", 8)
-                self.setFillColor(colors.HexColor("#475569"))
-                self.drawCentredString(page_width / 2.0, 15, str(page_no))
-                
-                self.restoreState()
-                
-                canvas.Canvas.showPage(self)
-            canvas.Canvas.save(self)
-
-    doc.build(story, canvasmaker=DynamicChapterCanvas)
+    doc.build(story, canvasmaker=NumberedCanvas)
     return output_filename
