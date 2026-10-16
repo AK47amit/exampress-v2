@@ -268,6 +268,9 @@ def generate_exampur_book(
                 ('VALIGN', (0,0), (-1,-1), 'TOP'),
             ]))
             story.append(ans_table)
+            
+            # --- FIXED: Enforce a strict page break right after the answer key so the next chapter starts fresh ---
+            story.append(PageBreak())
 
     doc.build(story, canvasmaker=NumberedCanvas)
     return output_filename
