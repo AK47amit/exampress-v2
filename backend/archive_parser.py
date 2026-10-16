@@ -4,10 +4,15 @@ import tempfile
 import re
 from parser import parse_uploaded_file
 
+def natural_sort_key(s):
+    """Helper to sort filenames naturally (e.g., 2 comes before 10)."""
+    return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]
+
 def extract_and_parse_archive(archive_path: str, book_type: str, format_size: str, column_count: int = 2) -> dict:
     """
     Extracts a ZIP archive with strict security validation (Zip Bomb & Path Traversal protection),
-    iterates through all contained files, parses them via Universal Parser, and merges them into a single Canonical Book Schema.
+    iterates through all contained files in correct natural numerical order, parses them via Universal Parser, 
+    and merges them into a single Canonical Book Schema without missing chapters.
     """
     extracted_dir = tempfile.mkdtemp()
     
@@ -38,44 +43,49 @@ def extract_and_parse_archive(archive_path: str, book_type: str, format_size: st
         all_chapters = []
         master_title = "Exampress Master Consolidated Edition"
         
-        # Walk through extracted folder recursively to catch files in nested folders
+        # Walk through extracted folder recursively and collect all file paths
+        file_entries = []
         for root, dirs, files in os.walk(extracted_dir):
-            for file in sorted(files):
+            for file in files:
                 # Ignore hidden system files like __MACOSX or .DS_Store
                 if file.startswith('.') or '__MACOSX' in root:
                     continue
-                
                 file_path = os.path.join(root, file)
-                ext = os.path.splitext(file)[1].lower()
-                
-                if ext in [".json", ".xlsx", ".xls", ".csv", ".docx", ".txt", ".pdf"]:
-                    try:
-                        # Parse individual file into Canonical Schema format with column support
-                        parsed_book = parse_uploaded_file(
-                            file_path=file_path,
-                            file_extension=ext,
-                            book_type=book_type,
-                            format_size=format_size,
-                            column_count=column_count
-                        )
-                        
-                        # Collect all chapters/blocks from this parsed file without injecting messy filenames
-                        if isinstance(parsed_book, dict) and "chapters" in parsed_book:
-                            for chap in parsed_book.get("chapters", []):
-                                current_title = chap.get("chapter_title", "").strip()
-                                
-                                # If title is missing or contains garbage/filename artifacts, clean it nicely
-                                if not current_title or ".docx" in current_title.lower() or "section" in current_title.lower():
-                                    clean_name = re.sub(r'\.[^.]+$', '', file)
-                                    clean_name = re.sub(r'^(section\s*\d+[\:\-]?\s*)?(\d+[\.\-\s]*)?', '', clean_name, flags=re.IGNORECASE).strip()
-                                    clean_name = re.sub(r'\s*\(\d+\)\s*$', '', clean_name).strip()
-                                    chap["chapter_title"] = clean_name if clean_name else "Practice Chapter"
-                                
-                                all_chapters.append(chap)
-                    except Exception as sub_err:
-                        # Skip corrupted or unsupported files within archive gracefully without crashing pipeline
-                        print(f"Skipping inner file {file} due to parse error: {str(sub_err)}")
-                        continue
+                file_entries.append((file, file_path))
+
+        # Sort files naturally so chapter 1, 2... 10, 11... 19 appear in exact correct sequence
+        file_entries.sort(key=lambda x: natural_sort_key(x[0]))
+
+        for file, file_path in file_entries:
+            ext = os.path.splitext(file)[1].lower()
+            
+            if ext in [".json", ".xlsx", ".xls", ".csv", ".docx", ".txt", ".pdf"]:
+                try:
+                    # Parse individual file into Canonical Schema format
+                    parsed_book = parse_uploaded_file(
+                        file_path=file_path,
+                        file_extension=ext,
+                        book_type=book_type,
+                        format_size=format_size,
+                        column_count=column_count
+                    )
+                    
+                    # Collect all chapters/blocks from this parsed file safely
+                    if isinstance(parsed_book, dict) and "chapters" in parsed_book:
+                        for chap in parsed_book.get("chapters", []):
+                            current_title = chap.get("chapter_title", "").strip()
+                            
+                            # If title is missing or contains garbage/filename artifacts, clean it nicely from filename
+                            if not current_title or ".docx" in current_title.lower() or "section" in current_title.lower():
+                                clean_name = re.sub(r'\.[^.]+$', '', file)
+                                clean_name = re.sub(r'^(section\s*\d+[\:\-]?\s*)?(\d+[\.\-\s]*)?', '', clean_name, flags=re.IGNORECASE).strip()
+                                clean_name = re.sub(r'\s*\(\d+\)\s*$', '', clean_name).strip()
+                                chap["chapter_title"] = clean_name if clean_name else "Practice Chapter"
+                            
+                            all_chapters.append(chap)
+                except Exception as sub_err:
+                    print(f"Skipping inner file {file} due to parse error: {str(sub_err)}")
+                    continue
 
         if not all_chapters:
             raise ValueError("No valid document files (.docx, .xlsx, .csv, .json, .txt, .pdf) found inside the archive.")
