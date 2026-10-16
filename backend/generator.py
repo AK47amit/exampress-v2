@@ -18,7 +18,6 @@ def register_fonts():
 class NumberedCanvas(canvas.Canvas):
     """
     Clean Canvas: Strictly draws ONLY the page number at the bottom center of every page.
-    No unwanted running headers.
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -134,6 +133,7 @@ def generate_exampur_book(
     if column_count not in [2, 3]:
         column_count = 2
 
+    # Setting up standard Multi-Column Frames
     col_width = (printable_width - ((column_count - 1) * column_gap_val)) / column_count
     frames = []
     for i in range(column_count):
@@ -166,7 +166,7 @@ def generate_exampur_book(
         leading=header_font_size + 4,
         textColor=colors.HexColor('#0f172a'),
         alignment=header_alignment,
-        spaceAfter=10,
+        spaceAfter=12,
         spaceBefore=0
     )
 
@@ -193,10 +193,10 @@ def generate_exampur_book(
         if index > 0:
             story.append(PageBreak())
             
-        # Chapter heading rendered strictly ONCE at the top of the chapter's main starting page via story flow
+        # Chapter heading rendered cleanly at the start of each chapter
         chap_title_str = f"Chapter {index + 1}: {chap.get('chapter_title', 'Practice Set')}"
         story.append(Paragraph(chap_title_str, chapter_style))
-        story.append(Spacer(1, 6))
+        story.append(Spacer(1, 4))
         
         for q_idx, q in enumerate(chap.get("questions", []), 1):
             q_text = f"<b>Q.{q_idx}</b> {q.get('question')}"
