@@ -49,11 +49,11 @@ def generate_exampur_book(
     column_count=2,                
     font_size=9.0,                 
     line_spacing=13.0,             
-    question_gap=8.0,              # Gap ko optimized kiya gaya hai taaki whitespace kam ho
-    option_top_gap=3.0,            
-    column_gap_val=12.0,           
-    footer_bottom_margin=25.0,     
-    option_vertical_gap=2.0        # Options ke beech ki vertical padding tight ki gayi hai
+    question_gap=6.0,              
+    option_top_gap=2.0,            
+    column_gap_val=10.0,           
+    footer_bottom_margin=20.0,     
+    option_vertical_gap=1.5        
 ):
     register_fonts()
 
@@ -117,7 +117,7 @@ def generate_exampur_book(
 
     page_width, page_height = B5 if format_size.upper() == "B5" else letter
     
-    margin = 25
+    margin = 20
     printable_width = page_width - (2 * margin)
     printable_height = page_height - margin - footer_bottom_margin
 
@@ -133,10 +133,10 @@ def generate_exampur_book(
             footer_bottom_margin, 
             col_width, 
             printable_height, 
-            leftPadding=2, 
-            rightPadding=2, 
-            topPadding=2, 
-            bottomPadding=2,
+            leftPadding=1, 
+            rightPadding=1, 
+            topPadding=1, 
+            bottomPadding=1,
             id=f'col_{i+1}'
         )
         frames.append(frame)
@@ -150,11 +150,11 @@ def generate_exampur_book(
     chapter_style = ParagraphStyle(
         name='ExampurChapter',
         fontName='HindiBold',
-        fontSize=11,
-        leading=14,
+        fontSize=10,
+        leading=13,
         textColor=colors.HexColor('#0f172a'),
-        spaceAfter=6,
-        spaceBefore=4
+        spaceAfter=4,
+        spaceBefore=2
     )
 
     question_style = ParagraphStyle(
@@ -163,7 +163,7 @@ def generate_exampur_book(
         fontSize=font_size,
         leading=line_spacing,          
         spaceAfter=option_top_gap,
-        spaceBefore=4
+        spaceBefore=3
     )
 
     option_style = ParagraphStyle(
@@ -182,16 +182,16 @@ def generate_exampur_book(
             
         chapter_display_text = f"<b>Chapter {index + 1}: {chap.get('chapter_title', 'Practice Set')}</b>"
         story.append(Paragraph(chapter_display_text, chapter_style))
-        story.append(Spacer(1, 4))
+        story.append(Spacer(1, 2))
         
         for q_idx, q in enumerate(chap.get("questions", []), 1):
-            q_elements = []
-            
+            # Har question ke elements ko flowable list me daala hai bina rigid KeepTogether ke, 
+            # taaki text seamlessly column boundary par flow kar sake bilkul textbook ki tarah.
             q_text = f"<b>Q.{q_idx}</b> {q.get('question')}"
-            q_elements.append(Paragraph(q_text, question_style))
+            story.append(Paragraph(q_text, question_style))
             
             for opt in q.get("options", []):
-                q_elements.append(Paragraph(opt, option_style))
+                story.append(Paragraph(opt, option_style))
             
             if q.get('answer'):
                 ans_style = ParagraphStyle(
@@ -200,10 +200,10 @@ def generate_exampur_book(
                     fontSize=font_size, 
                     leading=line_spacing, 
                     textColor=theme_accent, 
-                    spaceBefore=2, 
-                    spaceAfter=2
+                    spaceBefore=1, 
+                    spaceAfter=1
                 )
-                q_elements.append(Paragraph(f"Correct Answer: {q.get('answer')}", ans_style))
+                story.append(Paragraph(f"Correct Answer: {q.get('answer')}", ans_style))
                 
             if book_type == "solutions" and q.get('explanation'):
                 exp_style = ParagraphStyle(
@@ -213,21 +213,19 @@ def generate_exampur_book(
                     leading=line_spacing - 1.0, 
                     textColor=colors.HexColor('#475569'), 
                     spaceBefore=1, 
-                    spaceAfter=2
+                    spaceAfter=1
                 )
-                q_elements.append(Paragraph(f"Exp: {q.get('explanation')}", exp_style))
+                story.append(Paragraph(f"Exp: {q.get('explanation')}", exp_style))
 
-            q_elements.append(Spacer(1, question_gap))
-            # KeepTogether ki jagah flowable items use karne se ReportLab natural column balancing karega aur whitespace minimize hoga
-            story.append(KeepTogether(q_elements))
+            story.append(Spacer(1, question_gap))
 
-        story.append(Spacer(1, 8))
+        story.append(Spacer(1, 6))
 
         if chap.get("answer_key"):
             story.append(Paragraph(f"<b>Answer Key - Chapter {index + 1}</b>", chapter_style))
             
-            th_style = ParagraphStyle(name='THStyle', fontName='HindiBold', fontSize=7.0, leading=8, textColor=colors.HexColor('#0f172a'), alignment=1)
-            td_style = ParagraphStyle(name='TDStyle', fontName='HindiRegular', fontSize=7.0, leading=8, textColor=colors.HexColor('#334155'), alignment=1)
+            th_style = ParagraphStyle(name='THStyle', fontName='HindiBold', fontSize=6.5, leading=7.5, textColor=colors.HexColor('#0f172a'), alignment=1)
+            td_style = ParagraphStyle(name='TDStyle', fontName='HindiRegular', fontSize=6.5, leading=7.5, textColor=colors.HexColor('#334155'), alignment=1)
             
             raw_answers = chap.get("answer_key", [])
             num_cols = 5 
@@ -261,11 +259,11 @@ def generate_exampur_book(
             ans_table = Table(grid_data, colWidths=col_widths)
             ans_table.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f1f5f9')),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 1),
-                ('TOPPADDING', (0,0), (-1,-1), 1),
-                ('LEFTPADDING', (0,0), (-1,-1), 1),
-                ('RIGHTPADDING', (0,0), (-1,-1), 1),
-                ('GRID', (0,0), (-1,-1), 0.4, colors.HexColor('#cbd5e1')),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 0.5),
+                ('TOPPADDING', (0,0), (-1,-1), 0.5),
+                ('LEFTPADDING', (0,0), (-1,-1), 0.5),
+                ('RIGHTPADDING', (0,0), (-1,-1), 0.5),
+                ('GRID', (0,0), (-1,-1), 0.3, colors.HexColor('#cbd5e1')),
                 ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
                 ('ALIGN', (0,0), (-1,-1), 'CENTER'),
             ]))
