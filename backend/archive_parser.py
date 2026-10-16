@@ -1,6 +1,7 @@
 import os
 import zipfile
 import tempfile
+import re
 from parser import parse_uploaded_file
 
 def extract_and_parse_archive(archive_path: str, book_type: str, format_size: str, column_count: int = 2) -> dict:
@@ -38,7 +39,6 @@ def extract_and_parse_archive(archive_path: str, book_type: str, format_size: st
         master_title = "Exampress Master Consolidated Edition"
         
         # Walk through extracted folder recursively to catch files in nested folders
-        chapter_index = 1
         for root, dirs, files in os.walk(extracted_dir):
             for file in sorted(files):
                 # Ignore hidden system files like __MACOSX or .DS_Store
@@ -59,12 +59,19 @@ def extract_and_parse_archive(archive_path: str, book_type: str, format_size: st
                             column_count=column_count
                         )
                         
-                        # Collect all chapters/blocks from this parsed file
+                        # Collect all chapters/blocks from this parsed file without injecting messy filenames
                         if isinstance(parsed_book, dict) and "chapters" in parsed_book:
                             for chap in parsed_book.get("chapters", []):
-                                chap["chapter_title"] = f"Section {chapter_index}: {file} - {chap.get('chapter_title', 'Content')}"
+                                current_title = chap.get("chapter_title", "").strip()
+                                
+                                # If title is missing or contains garbage/filename artifacts, clean it nicely
+                                if not current_title or ".docx" in current_title.lower() or "section" in current_title.lower():
+                                    clean_name = re.sub(r'\.[^.]+$', '', file)
+                                    clean_name = re.sub(r'^(section\s*\d+[\:\-]?\s*)?(\d+[\.\-\s]*)?', '', clean_name, flags=re.IGNORECASE).strip()
+                                    clean_name = re.sub(r'\s*\(\d+\)\s*$', '', clean_name).strip()
+                                    chap["chapter_title"] = clean_name if clean_name else "Practice Chapter"
+                                
                                 all_chapters.append(chap)
-                                chapter_index += 1
                     except Exception as sub_err:
                         # Skip corrupted or unsupported files within archive gracefully without crashing pipeline
                         print(f"Skipping inner file {file} due to parse error: {str(sub_err)}")
