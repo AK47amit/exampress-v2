@@ -56,12 +56,12 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
     current_answer = "A"
     current_exp = ""
     
-    # Universal regex to catch question starts like Q.1, Q1, 1., etc anywhere in text flow
-    q_start_pattern = re.compile(r'(?:^|\s+)(?:q\.?\s*(\d+)|\bquestion\s*(\d+)|\b(\d+)\s*\.\s*)(?=[अ-हक-ज्ञA-Za-z])', re.IGNORECASE)
+    # Patterns for options, answers, and explicit numbering if present
     opt_pattern = re.compile(r'^([\(\[]?[A-Da-d][\)\]]?|\[?[A-Da-d]\])\s*[\.\-]?\s*(.+)')
     ans_pattern = re.compile(r'^(?:answer|ans|उत्तर)\s*[:\-]?\s*[\(\[]?([A-Da-d])[\)\]]?', re.IGNORECASE)
     ans_fallback_pattern = re.compile(r'^(?:answer|ans|उत्तर)\s*[:\-]\s*(.*)', re.IGNORECASE)
     exp_pattern = re.compile(r'^(?:explanation|exp|स्पष्टीकरण)\s*[:\-]\s*(.*)', re.IGNORECASE)
+    q_explicit_pattern = re.compile(r'^(?:q\.?\s*\d+|question\s*\d+|\d+[\.\)])\s*(.*)', re.IGNORECASE)
 
     def flush_block():
         nonlocal current_question, current_options, current_answer, current_exp, q_count
@@ -82,31 +82,12 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
             current_answer = "A"
             current_exp = ""
 
-    # Flatten lines if paragraphs contain multiple concatenated questions
-    processed_lines = []
-    for line in lines:
-        parts = q_start_pattern.split(line)
-        if len(parts) > 1:
-            # Reconstruct split parts with their question numbers
-            reconstructed = parts[0]
-            if reconstructed.strip():
-                processed_lines.append(reconstructed.strip())
-            for i in range(1, len(parts), 4):
-                q_num = parts[i] or parts[i+1] or parts[i+2]
-                rest = parts[i+3] if i+3 < len(parts) else ""
-                if q_num:
-                    processed_lines.append(f"Q.{q_num} {rest}".strip())
-                elif rest.strip():
-                    processed_lines.append(rest.strip())
-        else:
-            processed_lines.append(line)
-
-    for text in processed_lines:
+    for text in lines:
         text = text.strip()
         if not text:
             continue
 
-        q_match = re.match(r'^(?:q\.?\s*\d+|question\s*\d+|\d+[\.\)])\s*(.*)', text, re.IGNORECASE)
+        q_match = q_explicit_pattern.match(text)
         opt_match = opt_pattern.match(text)
         ans_match = ans_pattern.match(text)
         ans_fallback_match = ans_fallback_pattern.match(text)
@@ -114,8 +95,7 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
 
         if q_match:
             flush_block()
-            q_text_content = q_match.group(1).strip()
-            current_question = q_text_content if q_text_content else text
+            current_question = q_match.group(1).strip() or text
 
         elif opt_match:
             current_options.append(text)
@@ -125,6 +105,8 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
                 current_answer = ans_match.group(1).strip().upper()
             except Exception:
                 current_answer = "A"
+            # Answer milte hi question block complete ho jata hai
+            flush_block()
 
         elif ans_fallback_match:
             val = ans_fallback_match.group(1).strip()
@@ -133,12 +115,17 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
                 current_answer = letter_match.group(1).upper()
             else:
                 current_answer = val if val else "A"
+            flush_block()
 
         elif exp_match:
             current_exp = exp_match.group(1).strip()
 
         else:
-            if current_options:
+            # Agar 4 options poore ho chuke hain aur naya text aa raha hai, toh woh naye question ki shuruat hai
+            if len(current_options) >= 4:
+                flush_block()
+                current_question = text
+            elif current_options:
                 current_options[-1] += " " + text
             elif current_question:
                 current_question += " " + text
