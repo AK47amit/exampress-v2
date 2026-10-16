@@ -28,11 +28,9 @@ class Chapter(BaseModel):
         if not blocks:
             raise ValueError("Chapter cannot be empty. At least one question block is required.")
         
-        q_numbers = [b.q_no for b in blocks]
-        if len(q_numbers) != len(set(q_numbers)):
-            # Normalize sequence numbering automatically if duplicates or jumps happen
-            for idx, block in enumerate(blocks, 1):
-                block.q_no = idx
+        # Automatically re-sequence question numbers cleanly 1, 2, 3...
+        for idx, block in enumerate(blocks, 1):
+            block.q_no = idx
             
         return blocks
 
@@ -53,7 +51,7 @@ class CanonicalBookSchema(BaseModel):
 
 
 def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
-    """Robust parser helper to segregate Questions, Options, Answers and Explanations cleanly with automatic sequence numbering."""
+    """Strictly segments questions by detecting question markers, options, and answers."""
     blocks = []
     q_count = 1
     
@@ -62,14 +60,14 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
     current_answer = "A"
     current_exp = ""
     
-    # Enhanced patterns for questions, options, answers (English & Hindi)
-    q_pattern = re.compile(r'^(q\.?\s*\d+[\.\)]?|\d+[\.\)]\s*|\bquestion\b\s*\d+)', re.IGNORECASE)
+    # Precise regex to catch question headers like Q.1, 1., Q1, etc.
+    q_pattern = re.compile(r'^(?:q\.?\s*\d+|question\s*\d+|\d+[\.\)])\s*(.*)', re.IGNORECASE)
     opt_pattern = re.compile(r'^([\(\[]?[A-Da-d][\)\]]?|\[?[A-Da-d]\])\s*[\.\-]?\s*(.+)')
-    ans_pattern = re.compile(r'^(answer|ans|उत्तर)\s*[:\-]?\s*[\(\[]?([A-Da-d])[\)\]]?', re.IGNORECASE)
-    ans_fallback_pattern = re.compile(r'^(answer|ans|उत्तर)\s*[:\-]\s*(.*)', re.IGNORECASE)
-    exp_pattern = re.compile(r'^(explanation|exp|स्पष्टीकरण)\s*[:\-]\s*(.*)', re.IGNORECASE)
+    ans_pattern = re.compile(r'^(?:answer|ans|उत्तर)\s*[:\-]?\s*[\(\[]?([A-Da-d])[\)\]]?', re.IGNORECASE)
+    ans_fallback_pattern = re.compile(r'^(?:answer|ans|उत्तर)\s*[:\-]\s*(.*)', re.IGNORECASE)
+    exp_pattern = re.compile(r'^(?:explanation|exp|स्पष्टीकरण)\s*[:\-]\s*(.*)', re.IGNORECASE)
 
-    def flush_current_block():
+    def flush_block():
         nonlocal current_question, current_options, current_answer, current_exp, q_count
         if current_question.strip():
             if not current_options:
@@ -93,29 +91,29 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
         if not text:
             continue
 
+        q_match = q_pattern.match(text)
+        opt_match = opt_pattern.match(text)
         ans_match = ans_pattern.match(text)
         ans_fallback_match = ans_fallback_pattern.match(text)
         exp_match = exp_pattern.match(text)
-        opt_match = opt_pattern.match(text)
-        q_match = q_pattern.match(text)
 
-        if q_match and not opt_match:
-            flush_current_block()
-            current_question = q_pattern.sub('', text).strip()
-            if not current_question:
-                current_question = text
+        if q_match:
+            flush_block()
+            # Extract the actual question text following the Q.x or number prefix
+            q_text_content = q_match.group(1).strip()
+            current_question = q_text_content if q_text_content else text
 
         elif opt_match:
             current_options.append(text)
 
         elif ans_match:
             try:
-                current_answer = ans_match.group(2).strip().upper()
+                current_answer = ans_match.group(1).strip().upper()
             except Exception:
                 current_answer = "A"
 
         elif ans_fallback_match:
-            val = ans_fallback_match.group(2).strip()
+            val = ans_fallback_match.group(1).strip()
             letter_match = re.search(r'[\(\[]?([A-Da-d])[\)\]]?', val)
             if letter_match:
                 current_answer = letter_match.group(1).upper()
@@ -123,9 +121,10 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
                 current_answer = val if val else "A"
 
         elif exp_match:
-            current_exp = exp_match.group(2).strip()
+            current_exp = exp_match.group(1).strip()
 
         else:
+            # Append trailing text to current option, question, or start a new question if text looks like a standalone question line
             if current_options:
                 current_options[-1] += " " + text
             elif current_question:
@@ -133,13 +132,13 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
             else:
                 current_question = text
 
-    flush_current_block()
+    flush_block()
 
     if not blocks:
         blocks.append(QuestionBlock(
             q_no=1, 
             text="Parsed document content placeholder.",
-            options=["[A] Option 1", "[B] Option 2", "[C] Option 3", "[D] Option 4"],
+            options=["[A] Alpha", "[B] Beta", "[C] Gamma", "[D] Delta"],
             answer="A", 
             explanation="Auto-generated explanation."
         ))
