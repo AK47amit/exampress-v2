@@ -226,36 +226,33 @@ def generate_exampur_book(
         if chap.get("answer_key"):
             story.append(Paragraph(f"<b>Answer Key - Chapter {index + 1}</b>", chapter_style))
             
-            th_style = ParagraphStyle(name='THStyle', fontName='HindiBold', fontSize=7.5, leading=10, textColor=colors.HexColor('#0f172a'))
-            td_style = ParagraphStyle(name='TDStyle', fontName='HindiRegular', fontSize=7.5, leading=10, textColor=colors.HexColor('#334155'))
+            th_style = ParagraphStyle(name='THStyle', fontName='HindiBold', fontSize=8, leading=11, textColor=colors.HexColor('#0f172a'))
+            td_style = ParagraphStyle(name='TDStyle', fontName='HindiRegular', fontSize=8, leading=11, textColor=colors.HexColor('#334155'))
             
+            # Sirf 2 columns: Q aur Ans (Explanation column hata diya gaya hai)
             table_data = [[
                 Paragraph("Q", th_style), 
-                Paragraph("Ans", th_style), 
-                Paragraph("Explanation", th_style)
+                Paragraph("Ans", th_style)
             ]]
             
             for item_idx, item in enumerate(chap.get("answer_key", []), 1):
-                exp_text = item.get('exp', '')
-                if not exp_text or "auto-generated" in exp_text.lower():
-                    exp_text = "Verified."
+                ans_text = str(item.get('ans', 'A')).strip()
                 table_data.append([
                     Paragraph(str(item_idx), td_style),
-                    Paragraph(str(item.get('ans')), td_style),
-                    Paragraph(exp_text, td_style)
+                    Paragraph(ans_text, td_style)
                 ])
             
-            col_q = 25
-            col_ans = 45
-            col_exp = printable_width - (col_q + col_ans)
+            col_q = 35
+            col_ans = printable_width - col_q
             
-            ans_table = Table(table_data, colWidths=[col_q, col_ans, col_exp])
+            ans_table = Table(table_data, colWidths=[col_q, col_ans])
             ans_table.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f1f5f9')),
                 ('BOTTOMPADDING', (0,0), (-1,-1), 4),
                 ('TOPPADDING', (0,0), (-1,-1), 4),
                 ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
                 ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                ('ALIGN', (1,0), (1,-1), 'LEFT'),
             ]))
             story.append(ans_table)
 
