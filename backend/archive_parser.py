@@ -5,18 +5,17 @@ import re
 from parser import parse_uploaded_file
 
 def natural_sort_key(s):
-    """Helper to sort filenames naturally (e.g., 2 comes before 10)."""
+    """Strict natural numerical sorting so files order as 1, 2, ... 9, 10, 11 ... 19."""
     return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]
 
 def extract_and_parse_archive(archive_path: str, book_type: str, format_size: str, column_count: int = 2) -> dict:
     """
-    Extracts a ZIP archive securely, sorts files in exact natural numerical order (1 to 19+),
-    parses each file individually via Universal Parser, and merges them sequentially without missing chapters.
+    Extracts ZIP archive, enforces strict natural numerical sorting for 1-19 files,
+    treats each file as a distinct chapter with clean filename-derived titles, and builds a consolidated book schema.
     """
     extracted_dir = tempfile.mkdtemp()
     
     try:
-        # Extract archive contents with strict security validation
         if zipfile.is_zipfile(archive_path):
             with zipfile.ZipFile(archive_path, 'r') as zip_ref:
                 file_count = len(zip_ref.namelist())
@@ -40,16 +39,23 @@ def extract_and_parse_archive(archive_path: str, book_type: str, format_size: st
         all_chapters = []
         master_title = "Exampress Master Consolidated Edition"
         
-        # Collect all files recursively
+        # Collect all valid document files recursively
         file_entries = []
         for root, dirs, files in os.walk(extracted_dir):
             for file in files:
                 if file.startswith('.') or '__MACOSX' in root:
+                    file_path = os.path.join(root, file)
+                    # Clean up hidden files immediately
+                    try:
+                        os.remove(file_path)
+                    except Exception:
+                        pass
                     continue
+                
                 file_path = os.path.join(root, file)
                 file_entries.append((file, file_path))
 
-        # Sort files naturally (1.docx, 2.docx ... 10.docx ... 19.docx)
+        # Sort files strictly using natural numerical order (1.docx, 2.docx ... 19.docx)
         file_entries.sort(key=lambda x: natural_sort_key(x[0]))
 
         for file, file_path in file_entries:
@@ -57,6 +63,14 @@ def extract_and_parse_archive(archive_path: str, book_type: str, format_size: st
             
             if ext in [".json", ".xlsx", ".xls", ".csv", ".docx", ".txt", ".pdf"]:
                 try:
+                    # Derive clean chapter title directly from the filename to prevent merging or parsing garbage
+                    base_clean_name = re.sub(r'\.[^.]+$', '', file)
+                    # Strip leading numbering like "1.", "Section 1:", etc. for a clean presentation title
+                    display_title = re.sub(r'^(section\s*\d+[\:\-]?\s*)?(\d+[\.\-\s]*)?', '', base_clean_name, flags=re.IGNORECASE).strip()
+                    display_title = re.sub(r'\s*\(\d+\)\s*$', '', display_title).strip()
+                    if not display_title:
+                        display_title = base_clean_name if base_clean_name else "Practice Chapter"
+
                     # Parse individual file into Canonical Schema format
                     parsed_book = parse_uploaded_file(
                         file_path=file_path,
@@ -66,19 +80,22 @@ def extract_and_parse_archive(archive_path: str, book_type: str, format_size: st
                         column_count=column_count
                     )
                     
-                    # Collect all chapters from this parsed file and ensure clean titles
+                    # Extract blocks from the parsed book
+                    file_blocks = []
                     if isinstance(parsed_book, dict) and "chapters" in parsed_book:
                         for chap in parsed_book.get("chapters", []):
-                            current_title = chap.get("chapter_title", "").strip()
-                            
-                            # Clean garbage/filename artifacts if present
-                            if not current_title or ".docx" in current_title.lower() or "section" in current_title.lower():
-                                clean_name = re.sub(r'\.[^.]+$', '', file)
-                                clean_name = re.sub(r'^(section\s*\d+[\:\-]?\s*)?(\d+[\.\-\s]*)?', '', clean_name, flags=re.IGNORECASE).strip()
-                                clean_name = re.sub(r'\s*\(\d+\)\s*$', '', clean_name).strip()
-                                chap["chapter_title"] = clean_name if clean_name else "Practice Chapter"
-                            
-                            all_chapters.append(chap)
+                            if "blocks" in chap:
+                                file_blocks.extend(chap["blocks"])
+
+                    # If blocks were successfully parsed, enforce them into a single clean chapter for this specific file
+                    if file_blocks:
+                        # Re-number question blocks sequentially if needed or keep them robust
+                        consolidated_chapter = {
+                            "chapter_title": display_title,
+                            "blocks": file_blocks
+                        }
+                        all_chapters.append(consolidated_chapter)
+
                 except Exception as sub_err:
                     print(f"Skipping inner file {file} due to parse error: {str(sub_err)}")
                     continue
