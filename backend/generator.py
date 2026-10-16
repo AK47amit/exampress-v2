@@ -153,8 +153,8 @@ def generate_exampur_book(
         fontSize=11,
         leading=15,
         textColor=colors.HexColor('#0f172a'),
-        spaceAfter=12,
-        spaceBefore=8
+        spaceAfter=8,
+        spaceBefore=6
     )
 
     question_style = ParagraphStyle(
@@ -163,7 +163,7 @@ def generate_exampur_book(
         fontSize=font_size,
         leading=line_spacing,          
         spaceAfter=option_top_gap,
-        spaceBefore=4
+        spaceBefore=6
     )
 
     option_style = ParagraphStyle(
@@ -182,7 +182,7 @@ def generate_exampur_book(
             
         chapter_display_text = f"<b>Chapter {index + 1}: {chap.get('chapter_title', 'Practice Set')}</b>"
         story.append(Paragraph(chapter_display_text, chapter_style))
-        story.append(Spacer(1, 4))
+        story.append(Spacer(1, 6))
         
         for q_idx, q in enumerate(chap.get("questions", []), 1):
             q_elements = []
@@ -200,8 +200,8 @@ def generate_exampur_book(
                     fontSize=font_size, 
                     leading=line_spacing, 
                     textColor=theme_accent, 
-                    spaceBefore=4, 
-                    spaceAfter=4
+                    spaceBefore=3, 
+                    spaceAfter=3
                 )
                 q_elements.append(Paragraph(f"Correct Answer: {q.get('answer')}", ans_style))
                 
@@ -213,14 +213,14 @@ def generate_exampur_book(
                     leading=line_spacing - 1.0, 
                     textColor=colors.HexColor('#475569'), 
                     spaceBefore=2, 
-                    spaceAfter=3
+                    spaceAfter=2
                 )
                 q_elements.append(Paragraph(f"Exp: {q.get('explanation')}", exp_style))
 
             q_elements.append(Spacer(1, question_gap))
             story.append(KeepTogether(q_elements))
 
-        story.append(Spacer(1, 10))
+        story.append(Spacer(1, 8))
 
         if chap.get("answer_key"):
             story.append(Paragraph(f"<b>Answer Key - Chapter {index + 1}</b>", chapter_style))
