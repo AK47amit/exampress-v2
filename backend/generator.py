@@ -56,11 +56,11 @@ def generate_exampur_book(
     footer_bottom_margin=22.0,     
     top_header_margin=15.0,        
     option_vertical_gap=1.5,
-    # Frontend Toolbar Customization Parameters for Chapter Heading Style
-    header_font_size=11.0,
+    # Frontend Toolbar Customization Parameters for Chapter Heading
+    header_font_size=16.0,
     header_bold=True,
     header_italic=False,
-    header_alignment=1             # 0: Left, 1: Center, 2: Right
+    header_alignment=0             # 0: Left aligned across top width, 1: Center, 2: Right
 ):
     register_fonts()
 
@@ -154,7 +154,7 @@ def generate_exampur_book(
 
     story = []
 
-    # Toolbar-driven Chapter Heading Style
+    # Toolbar-driven Chapter Heading Style spanning full width before multi-column flow starts
     font_name_map = "HindiBold" if header_bold else "HindiRegular"
     chapter_style = ParagraphStyle(
         name='ExampurChapterCustom',
@@ -163,8 +163,8 @@ def generate_exampur_book(
         leading=header_font_size + 4,
         textColor=colors.HexColor('#0f172a'),
         alignment=header_alignment,
-        spaceAfter=8,
-        spaceBefore=4
+        spaceAfter=12,
+        spaceBefore=0
     )
 
     question_style = ParagraphStyle(
@@ -190,10 +190,10 @@ def generate_exampur_book(
         if index > 0:
             story.append(PageBreak())
             
-        # Chapter heading is rendered ONLY inside the story flow on the chapter's main starting page
+        # Chapter heading is rendered as a standalone flowable item at the very top of the chapter's first page only
         chap_title_str = f"Chapter {index + 1}: {chap.get('chapter_title', 'Practice Set')}"
         story.append(Paragraph(chap_title_str, chapter_style))
-        story.append(Spacer(1, 4))
+        story.append(Spacer(1, 6))
         
         for q_idx, q in enumerate(chap.get("questions", []), 1):
             q_text = f"<b>Q.{q_idx}</b> {q.get('question')}"

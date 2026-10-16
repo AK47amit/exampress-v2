@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
+from typing import Optional
 
 from .parser import parse_uploaded_file
 from generator import generate_exampur_book
@@ -200,7 +201,11 @@ def background_generate_book_task(
     option_top_gap: float,
     column_gap_val: float,
     footer_bottom_margin: float,
-    option_vertical_gap: float
+    option_vertical_gap: float,
+    header_font_size: float,
+    header_bold: bool,
+    header_italic: bool,
+    header_alignment: int
 ):
     try:
         job_status_store[job_id] = {"status": "processing", "progress": 50}
@@ -218,7 +223,11 @@ def background_generate_book_task(
             option_top_gap=option_top_gap,
             column_gap_val=column_gap_val,
             footer_bottom_margin=footer_bottom_margin,
-            option_vertical_gap=option_vertical_gap
+            option_vertical_gap=option_vertical_gap,
+            header_font_size=header_font_size,
+            header_bold=header_bold,
+            header_italic=header_italic,
+            header_alignment=header_alignment
         )
         
         if generate_output and os.path.exists(output_path):
@@ -240,14 +249,19 @@ async def generate_book_async(
     book_type: str = Form("quiz"),
     format_size: str = Form("B5"),
     column_count: int = Form(2),
-    # Control Panel Spacing Parameters (a to g)
+    # Control Panel Spacing Parameters
     font_size: float = Form(9.0),
     line_spacing: float = Form(13.0),
-    question_gap: float = Form(10.0),
-    option_top_gap: float = Form(4.0),
-    column_gap_val: float = Form(12.0),
-    footer_bottom_margin: float = Form(30.0),
-    option_vertical_gap: float = Form(2.0),
+    question_gap: float = Form(6.0),
+    option_top_gap: float = Form(2.0),
+    column_gap_val: float = Form(10.0),
+    footer_bottom_margin: float = Form(20.0),
+    option_vertical_gap: float = Form(1.5),
+    # Frontend Toolbar Chapter Heading Customization Parameters
+    header_font_size: float = Form(11.0),
+    header_bold: bool = Form(True),
+    header_italic: bool = Form(False),
+    header_alignment: int = Form(1),
     file: UploadFile = File(None)
 ):
     """
@@ -339,7 +353,11 @@ async def generate_book_async(
         option_top_gap=option_top_gap,
         column_gap_val=column_gap_val,
         footer_bottom_margin=footer_bottom_margin,
-        option_vertical_gap=option_vertical_gap
+        option_vertical_gap=option_vertical_gap,
+        header_font_size=header_font_size,
+        header_bold=header_bold,
+        header_italic=header_italic,
+        header_alignment=header_alignment
     )
     
     logger.info(f"Queued background generation job {job_id}")
@@ -435,14 +453,19 @@ async def generate_book(
     book_type: str = Form(...),
     format_size: str = Form(...),
     column_count: int = Form(2),
-    # Control Panel Spacing Parameters (a to g)
+    # Control Panel Spacing Parameters
     font_size: float = Form(9.0),
     line_spacing: float = Form(13.0),
-    question_gap: float = Form(10.0),
-    option_top_gap: float = Form(4.0),
-    column_gap_val: float = Form(12.0),
-    footer_bottom_margin: float = Form(30.0),
-    option_vertical_gap: float = Form(2.0),
+    question_gap: float = Form(6.0),
+    option_top_gap: float = Form(2.0),
+    column_gap_val: float = Form(10.0),
+    footer_bottom_margin: float = Form(20.0),
+    option_vertical_gap: float = Form(1.5),
+    # Frontend Toolbar Chapter Heading Customization Parameters
+    header_font_size: float = Form(11.0),
+    header_bold: bool = Form(True),
+    header_italic: bool = Form(False),
+    header_alignment: int = Form(1),
     file: UploadFile = File(None)
 ):
     tmp_input_path = None
@@ -524,7 +547,11 @@ async def generate_book(
             option_top_gap=option_top_gap,
             column_gap_val=column_gap_val,
             footer_bottom_margin=footer_bottom_margin,
-            option_vertical_gap=option_vertical_gap
+            option_vertical_gap=option_vertical_gap,
+            header_font_size=header_font_size,
+            header_bold=header_bold,
+            header_italic=header_italic,
+            header_alignment=header_alignment
         )
         
         if not output_pdf or not os.path.exists(output_pdf):
@@ -613,14 +640,19 @@ async def batch_export_books(
     book_type: str = Form("quiz"),
     format_size: str = Form("B5"),
     column_count: int = Form(2),
-    # Control Panel Spacing Parameters (a to g)
+    # Control Panel Spacing Parameters
     font_size: float = Form(9.0),
     line_spacing: float = Form(13.0),
-    question_gap: float = Form(10.0),
-    option_top_gap: float = Form(4.0),
-    column_gap_val: float = Form(12.0),
-    footer_bottom_margin: float = Form(30.0),
-    option_vertical_gap: float = Form(2.0),
+    question_gap: float = Form(6.0),
+    option_top_gap: float = Form(2.0),
+    column_gap_val: float = Form(10.0),
+    footer_bottom_margin: float = Form(20.0),
+    option_vertical_gap: float = Form(1.5),
+    # Frontend Toolbar Chapter Heading Customization Parameters
+    header_font_size: float = Form(11.0),
+    header_bold: bool = Form(True),
+    header_italic: bool = Form(False),
+    header_alignment: int = Form(1),
     files: list[UploadFile] = File(...)
 ):
     """
@@ -666,7 +698,11 @@ async def batch_export_books(
                 option_top_gap=option_top_gap,
                 column_gap_val=column_gap_val,
                 footer_bottom_margin=footer_bottom_margin,
-                option_vertical_gap=option_vertical_gap
+                option_vertical_gap=option_vertical_gap,
+                header_font_size=header_font_size,
+                header_bold=header_bold,
+                header_italic=header_italic,
+                header_alignment=header_alignment
             )
             
             if os.path.exists(pdf_path):

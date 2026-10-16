@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Layers, FileText, Download, Sparkles, CheckCircle2, Cpu, ChevronDown, FileSpreadsheet, Sliders } from 'lucide-react';
+import { Layers, FileText, Download, Sparkles, CheckCircle2, Cpu, ChevronDown, FileSpreadsheet, Sliders, Type } from 'lucide-react';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://exampress-v2-production.up.railway.app';
 
@@ -17,11 +17,18 @@ export default function App() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [fontSize, setFontSize] = useState(9.0);
   const [lineSpacing, setLineSpacing] = useState(13.0);
-  const [questionGap, setQuestionGap] = useState(10.0);
-  const [optionTopGap, setOptionTopGap] = useState(4.0);
-  const [columnGapVal, setColumnGapVal] = useState(12.0);
-  const [footerBottomMargin, setFooterBottomMargin] = useState(30.0);
-  const [optionVerticalGap, setOptionVerticalGap] = useState(2.0);
+  const [questionGap, setQuestionGap] = useState(6.0);
+  const [optionTopGap, setOptionTopGap] = useState(2.0);
+  const [columnGapVal, setColumnGapVal] = useState(10.0);
+  const [footerBottomMargin, setFooterBottomMargin] = useState(20.0);
+  const [optionVerticalGap, setOptionVerticalGap] = useState(1.5);
+
+  // Chapter Heading Toolbar States
+  const [showHeadingToolbar, setShowHeadingToolbar] = useState(false);
+  const [headerFontSize, setHeaderFontSize] = useState(11.0);
+  const [headerBold, setHeaderBold] = useState(true);
+  const [headerItalic, setHeaderItalic] = useState(false);
+  const [headerAlignment, setHeaderAlignment] = useState(1); // 1 = Center
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -39,7 +46,7 @@ export default function App() {
     formData.append('format_size', formatSize);
     formData.append('column_count', columnCount);
     
-    // Append Advanced Spacing Parameters (a to g)
+    // Append Advanced Spacing Parameters
     formData.append('font_size', fontSize.toString());
     formData.append('line_spacing', lineSpacing.toString());
     formData.append('question_gap', questionGap.toString());
@@ -47,6 +54,12 @@ export default function App() {
     formData.append('column_gap_val', columnGapVal.toString());
     formData.append('footer_bottom_margin', footerBottomMargin.toString());
     formData.append('option_vertical_gap', optionVerticalGap.toString());
+
+    // Append Chapter Heading Toolbar Parameters
+    formData.append('header_font_size', headerFontSize.toString());
+    formData.append('header_bold', headerBold.toString());
+    formData.append('header_italic', headerItalic.toString());
+    formData.append('header_alignment', headerAlignment.toString());
 
     if (selectedFile) {
       formData.append('file', selectedFile);
@@ -190,6 +203,79 @@ export default function App() {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Chapter Heading Formatting Toolbar */}
+          <div className="border border-emerald-900/10 rounded-2xl bg-teal-50/20 p-4">
+            <button
+              type="button"
+              onClick={() => setShowHeadingToolbar(!showHeadingToolbar)}
+              className="w-full flex items-center justify-between text-xs font-bold uppercase tracking-wider text-emerald-950 cursor-pointer"
+            >
+              <span className="flex items-center gap-2">
+                <Type className="w-4 h-4 text-emerald-600" /> Chapter Heading Toolbar (Font, Size, Alignment)
+              </span>
+              <ChevronDown className={`w-4 h-4 transition-transform ${showHeadingToolbar ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showHeadingToolbar && (
+              <div className="mt-4 space-y-3 pt-3 border-t border-emerald-900/10 text-xs">
+                <div>
+                  <div className="flex justify-between mb-1 font-medium text-slate-600">
+                    <span>Heading Font Size</span>
+                    <span className="text-emerald-700 font-bold">{headerFontSize}pt</span>
+                  </div>
+                  <input type="range" min="9" max="18" step="0.5" value={headerFontSize} onChange={(e) => setHeaderFontSize(Number(e.target.value))} className="w-full accent-emerald-600 cursor-pointer" />
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <span className="font-medium text-slate-600">Style Toggles:</span>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setHeaderBold(!headerBold)}
+                      className={`px-3 py-1 font-bold rounded-lg border text-xs ${headerBold ? 'bg-slate-900 text-white' : 'bg-white text-slate-700'}`}
+                    >
+                      Bold
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHeaderItalic(!headerItalic)}
+                      className={`px-3 py-1 italic rounded-lg border text-xs ${headerItalic ? 'bg-slate-900 text-white' : 'bg-white text-slate-700'}`}
+                    >
+                      Italic
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <span className="font-medium text-slate-600">Alignment:</span>
+                  <div className="flex border rounded-lg overflow-hidden bg-white">
+                    <button
+                      type="button"
+                      onClick={() => setHeaderAlignment(0)}
+                      className={`px-3 py-1 text-xs ${headerAlignment === 0 ? 'bg-emerald-600 text-white' : 'hover:bg-slate-100 text-slate-700'}`}
+                    >
+                      Left
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHeaderAlignment(1)}
+                      className={`px-3 py-1 text-xs ${headerAlignment === 1 ? 'bg-emerald-600 text-white' : 'hover:bg-slate-100 text-slate-700'}`}
+                    >
+                      Center
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHeaderAlignment(2)}
+                      className={`px-3 py-1 text-xs ${headerAlignment === 2 ? 'bg-emerald-600 text-white' : 'hover:bg-slate-100 text-slate-700'}`}
+                    >
+                      Right
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Advanced Spacing Control Panel (Parameters a to g) */}
