@@ -208,8 +208,6 @@ def generate_exampur_book(
         spaceAfter=option_vertical_gap 
     )
 
-    theme_accent = colors.HexColor('#047857' if book_type == "quiz" else ('#1d4ed8' if book_type == "theory" else '#b91c1c'))
-
     for index, chap in enumerate(book_data.get("chapters", [])):
         if index > 0:
             story.append(PageBreak())
@@ -234,18 +232,8 @@ def generate_exampur_book(
             for opt in q.get("options", []):
                 story.append(Paragraph(opt, option_style))
             
-            if q.get('answer'):
-                ans_style = ParagraphStyle(
-                    name='AnsStyle', 
-                    fontName='HindiBold', 
-                    fontSize=font_size, 
-                    leading=line_spacing, 
-                    textColor=theme_accent, 
-                    spaceBefore=1, 
-                    spaceAfter=1
-                )
-                story.append(Paragraph(f"Correct Answer: {q.get('answer')}", ans_style))
-                
+            # Redundant inline green answer text has been completely removed as requested.
+
             if book_type == "solutions" and q.get('explanation'):
                 exp_style = ParagraphStyle(
                     name='ExpStyle', 

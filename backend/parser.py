@@ -4,6 +4,7 @@ import pandas as pd
 from docx import Document
 from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional
+from .optimizer import DocumentOptimizer
 
 try:
     import pypdf
@@ -56,7 +57,7 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
     current_answer = "A"
     current_exp = ""
     
-    # Patterns for options, answers, and explicit numbering if present
+    # Robust Patterns for options, native answers, and explicit numbering
     opt_pattern = re.compile(r'^([\(\[]?[A-Da-d][\)\]]?|\[?[A-Da-d]\])\s*[\.\-]?\s*(.+)')
     ans_pattern = re.compile(r'^(?:answer|ans|उत्तर)\s*[:\-]?\s*[\(\[]?([A-Da-d])[\)\]]?', re.IGNORECASE)
     ans_fallback_pattern = re.compile(r'^(?:answer|ans|उत्तर)\s*[:\-]\s*(.*)', re.IGNORECASE)
@@ -73,7 +74,7 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
                 q_no=q_count,
                 text=current_question.strip(),
                 options=current_options,
-                answer=current_answer.strip() if current_answer else "A",
+                answer=current_answer.strip().upper() if current_answer else "A",
                 explanation=current_exp.strip()
             ))
             q_count += 1
@@ -105,8 +106,6 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
                 current_answer = ans_match.group(1).strip().upper()
             except Exception:
                 current_answer = "A"
-            # Answer milte hi question block complete ho jata hai
-            flush_block()
 
         elif ans_fallback_match:
             val = ans_fallback_match.group(1).strip()
@@ -114,15 +113,14 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
             if letter_match:
                 current_answer = letter_match.group(1).upper()
             else:
-                current_answer = val if val else "A"
-            flush_block()
+                current_answer = val[0].upper() if val else "A"
 
         elif exp_match:
             current_exp = exp_match.group(1).strip()
+            flush_block()
 
         else:
-            # Agar 4 options poore ho chuke hain aur naya text aa raha hai, toh woh naye question ki shuruat hai
-            if len(current_options) >= 4:
+            if len(current_options) >= 4 and not opt_match:
                 flush_block()
                 current_question = text
             elif current_options:
@@ -155,7 +153,8 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
             with open(file_path, "r", encoding="utf-8") as f:
                 raw_data = json.load(f)
             raw_data["column_count"] = column_count
-            return CanonicalBookSchema(**raw_data).model_dump()
+            book_dict = CanonicalBookSchema(**raw_data).model_dump()
+            return DocumentOptimizer.optimize_canonical_book(book_dict)
 
         elif ext in [".xlsx", ".xls", ".csv"]:
             df = pd.read_excel(file_path) if ext in [".xlsx", ".xls"] else pd.read_csv(file_path)
@@ -169,7 +168,7 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
                     str(row.get('opt3', 'C')),
                     str(row.get('opt4', 'D'))
                 ]
-                answer = str(row.get('answer', 'A'))
+                answer = str(row.get('answer', 'A')).strip().upper()
                 explanation = str(row.get('explanation', ''))
                 blocks.append(QuestionBlock(q_no=q_no, text=text, options=options, answer=answer, explanation=explanation))
                 
@@ -181,7 +180,8 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
                 column_count=column_count,
                 chapters=[chapter]
             )
-            return book.model_dump()
+            book_dict = book.model_dump()
+            return DocumentOptimizer.optimize_canonical_book(book_dict)
 
         elif ext == ".pdf":
             if not pypdf:
@@ -206,7 +206,8 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
                 column_count=column_count,
                 chapters=[chapter]
             )
-            return book.model_dump()
+            book_dict = book.model_dump()
+            return DocumentOptimizer.optimize_canonical_book(book_dict)
 
         elif ext == ".docx":
             doc = Document(file_path)
@@ -251,7 +252,8 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
                 column_count=column_count,
                 chapters=[chapter]
             )
-            return book.model_dump()
+            book_dict = book.model_dump()
+            return DocumentOptimizer.optimize_canonical_book(book_dict)
 
         else:
             raise ValueError(f"Unsupported file extension: {ext}")
