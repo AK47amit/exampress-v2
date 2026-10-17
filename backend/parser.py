@@ -50,37 +50,38 @@ class CanonicalBookSchema(BaseModel):
 
 def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
     """
-    100% High-Fidelity Raw Text Preservation Parser.
-    Treats each meaningful paragraph as an independent element without altering text content.
+    High-Fidelity Parser tailored for Exampur manuscripts (no pre-existing Q numbers).
+    Preserves 100% raw text fidelity without altering matras or words.
     """
     blocks = []
     q_count = 1
     
-    current_question = ""
+    current_question_lines = []
     current_options = []
     current_answer = "A"
     current_exp = ""
     
-    # Safe patterns to identify structural components without rewriting text
-    opt_pattern = re.compile(r'^([\(\[]?[A-Da-d][\)\]]?|\[?[A-Da-d]\])\s*[\.\-]?\s*(.+)')
-    ans_pattern = re.compile(r'^(?:answer|ans|उत्तर)\s*[:\-]?\s*[\(\[]?([A-Da-d])[\)\]]?', re.IGNORECASE)
-    q_explicit_pattern = re.compile(r'^(?:q\.?\s*\d+|question\s*\d+|\d+[\.\)])\s*(.*)', re.IGNORECASE)
+    # Patterns to match options and answers accurately
+    opt_pattern = re.compile(r'^[\(\[]?([A-Da-d])[\)\]]?\s*[\.\-]?\s*(.+)')
+    ans_pattern = re.compile(r'^(?:answer|ans|उत्तर)\s*[:\-]?\s*[\(\[]?([A-Da-d])[\)\]]?(?:\s*[\-\–\—]?\s*(.*))?', re.IGNORECASE)
+    alt_ans_pattern = re.compile(r'\(correct\s*answer\s*[:\-]?\s*([A-Da-d])\)', re.IGNORECASE)
 
     def flush_block():
-        nonlocal current_question, current_options, current_answer, current_exp, q_count
-        if current_question.strip():
+        nonlocal current_question_lines, current_options, current_answer, current_exp, q_count
+        q_text = " ".join(current_question_lines).strip()
+        if q_text:
             if not current_options:
                 current_options = ["[A] Option A", "[B] Option B", "[C] Option C", "[D] Option D"]
             
             blocks.append(QuestionBlock(
                 q_no=q_count,
-                text=current_question.strip(),
+                text=q_text,
                 options=current_options,
                 answer=current_answer.strip().upper() if current_answer else "A",
                 explanation=current_exp.strip()
             ))
             q_count += 1
-            current_question = ""
+            current_question_lines = []
             current_options = []
             current_answer = "A"
             current_exp = ""
@@ -90,29 +91,41 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
         if not text:
             continue
 
-        q_match = q_explicit_pattern.match(text)
-        opt_match = opt_pattern.match(text)
-        ans_match = ans_pattern.match(text)
+        # Check for alternative correct answer like (Correct Answer: B)
+        alt_match = alt_ans_pattern.search(text)
+        if alt_match:
+            current_answer = alt_match.group(1).upper()
+            flush_block()
+            continue
 
+        # Check for standard answer line (उत्तर: / Answer:)
+        ans_match = ans_pattern.match(text)
         if ans_match:
             current_answer = ans_match.group(1).upper()
+            if ans_match.group(2):
+                current_exp = ans_match.group(2).strip()
             flush_block()
-        elif q_match:
-            if current_question.strip():
-                flush_block()
-            current_question = q_match.group(1).strip() or text
-        elif opt_match:
+            continue
+
+        # Check for option ([A], (A) etc.)
+        opt_match = opt_pattern.match(text)
+        if opt_match and len(current_options) < 4:
             current_options.append(text)
+            if len(current_options) == 4:
+                # Options are complete, next lines will typically be answer
+                pass
+            continue
+
+        # If options are already 4 and text is not an option/answer, it belongs to the next question
+        if len(current_options) >= 4:
+            flush_block()
+            current_options = []
+
+        # Otherwise, accumulate question lines (handling bilingual text smoothly)
+        if current_options:
+            current_options[-1] += " " + text
         else:
-            # If no pattern matches, keep it attached to the active section safely without corruption
-            if not current_question:
-                current_question = text
-            elif len(current_options) < 4 and current_question and not current_options:
-                current_question += " " + text
-            elif current_options:
-                current_options[-1] += " " + text
-            else:
-                current_question += " " + text
+            current_question_lines.append(text)
 
     flush_block()
 
@@ -194,7 +207,6 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
             return DocumentOptimizer.optimize_canonical_book(book_dict)
 
         elif ext == ".docx":
-            # Extract paragraphs exactly as written in original docx without modifications
             doc = Document(file_path)
             paragraphs = [para.text for para in doc.paragraphs if para.text and para.text.strip()]
             
@@ -214,7 +226,7 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
                 cleaned_title = re.sub(r'^(section\s*\d+[\:\-]?\s*)?(\d+[\.\-\s]*)?', '', cleaned_title, flags=re.IGNORECASE).strip()
                 cleaned_title = re.sub(r'\s*\(\d+\)\s*$', '', cleaned_title).strip()
                 
-                is_question_or_opt = bool(re.search(r'^(q\.?\s*\d+|[\(\[]?[A-Da-d][\)\]]?|\d+[\.\)])', cleaned_title, re.IGNORECASE))
+                is_question_or_opt = bool(re.search(r'^([\(\[]?[A-Da-d][\)\]]?|\d+[\.\)])', cleaned_title, re.IGNORECASE))
                 
                 if cleaned_title and len(cleaned_title) < 100 and not is_question_or_opt:
                     doc_title = cleaned_title
