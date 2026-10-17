@@ -61,13 +61,11 @@ def fix_devanagari_visual_order(text: str) -> str:
     # 1. Base NFC Normalization
     text = unicodedata.normalize('NFC', text)
     
-    # 2. Fix misplaced short 'i' matra (U+093F) stored after consonants/clusters
-    # Pattern: Consonant or conjunct cluster followed immediately by U+093F -> Shift U+093F to the front
+    # 2. Fix misplaced short 'i' matra (U+093F) stored after consonants/clusters using lambda function
     pattern_i_matra = r'((?:[\u0915-\u0939]\u094D)*[\u0915-\u0939])\u093F'
-    text = re.sub(pattern_i_matra, r'\u093F\1', text)
+    text = re.sub(pattern_i_matra, lambda m: '\u093F' + m.group(1), text)
     
-    # 3. Handle specific known visual scrambling or layout artifacts if any persist
-    # Specific targeted corrections for common corrupted word patterns found in docx extraction:
+    # 3. Specific targeted corrections for common corrupted word patterns found in docx extraction:
     replacements = {
         "मसि": "मिस",
         "कसि": "किसी",
