@@ -37,7 +37,7 @@ def extract_and_parse_archive(archive_path: str, book_type: str, format_size: st
         file_entries = []
         for root, dirs, files in os.walk(extracted_dir):
             for file in files:
-                if file.startswith('.') or '__MACOSX' in root:
+                if file.startswith('.') or '__MACOSX' in root or file.startswith('~$'):
                     file_path = os.path.join(root, file)
                     try:
                         os.remove(file_path)
@@ -49,6 +49,9 @@ def extract_and_parse_archive(archive_path: str, book_type: str, format_size: st
                 file_entries.append((file, file_path))
 
         file_entries.sort(key=lambda x: natural_sort_key(x[0]))
+
+        if not file_entries:
+            raise ValueError("No valid document files found inside the archive (empty or hidden files only).")
 
         for file, file_path in file_entries:
             ext = os.path.splitext(file)[1].lower()
@@ -69,7 +72,6 @@ def extract_and_parse_archive(archive_path: str, book_type: str, format_size: st
                         column_count=column_count
                     )
                     
-                    # Saare internal sub-chapter blocks ko ek hi file ke liye merge karlo
                     file_blocks = []
                     if isinstance(parsed_book, dict) and "chapters" in parsed_book:
                         for chap in parsed_book.get("chapters", []):
@@ -84,8 +86,8 @@ def extract_and_parse_archive(archive_path: str, book_type: str, format_size: st
                         all_chapters.append(consolidated_chapter)
 
                 except Exception as sub_err:
-                    print(f"Skipping inner file {file} due to parse error: {str(sub_err)}")
-                    continue
+                    print(f"Error parsing inner file {file}: {str(sub_err)}")
+                    raise ValueError(f"Error parsing inner file {file}: {str(sub_err)}")
 
         if not all_chapters:
             raise ValueError("No valid document files found inside the archive.")
