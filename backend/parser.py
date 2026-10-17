@@ -57,7 +57,7 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
     current_answer = "A"
     current_exp = ""
     
-    # Robust Patterns for options, native answers, and explicit numbering
+    # Robust Patterns for Exampur manuscripts (supporting [A], (A), A., etc.)
     opt_pattern = re.compile(r'^([\(\[]?[A-Da-d][\)\]]?|\[?[A-Da-d]\])\s*[\.\-]?\s*(.+)')
     ans_pattern = re.compile(r'^(?:answer|ans|उत्तर)\s*[:\-]?\s*[\(\[]?([A-Da-d])[\)\]]?', re.IGNORECASE)
     ans_fallback_pattern = re.compile(r'^(?:answer|ans|उत्तर)\s*[:\-]\s*(.*)', re.IGNORECASE)
@@ -100,6 +100,7 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
 
         elif opt_match:
             current_options.append(text)
+            # If we already collected 4 options and encounter a new option or text, check if we need to flush later
 
         elif ans_match:
             try:
@@ -114,13 +115,16 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
                 current_answer = letter_match.group(1).upper()
             else:
                 current_answer = val[0].upper() if val else "A"
+            # Answer milne par question block complete ho gaya, flush kar do
+            flush_block()
 
         elif exp_match:
             current_exp = exp_match.group(1).strip()
             flush_block()
 
         else:
-            if len(current_options) >= 4 and not opt_match:
+            # Exampur format handling: If we already have 4 options and text comes, it's the next question!
+            if len(current_options) >= 4:
                 flush_block()
                 current_question = text
             elif current_options:
