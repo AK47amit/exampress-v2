@@ -1,6 +1,58 @@
 import os
 import re
 import gc
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib import colors
+
+# --- STEP 1: Devanagari Hindi Font Registration ---
+FONT_NAME = "HindiFont"
+font_paths = [
+    "assets/NotoSansDevanagari-Regular.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf",
+    "C:/Windows/Fonts/mangal.ttf",  # Windows Mangal font fallback
+    "C:/Windows/Fonts/Nirmala.ttf"   # Windows Nirmala UI fallback
+]
+
+font_registered = False
+for path in font_paths:
+    if os.path.exists(path):
+        try:
+            pdfmetrics.registerFont(TTFont(FONT_NAME, path))
+            font_registered = True
+            break
+        except Exception:
+            continue
+
+
+# --- STEP 2: Paragraph Styles Setup with Hindi Font & CJK Wrapping ---
+styles = getSampleStyleSheet()
+
+hindi_question_style = ParagraphStyle(
+    'HindiQuestionStyle',
+    parent=styles['Normal'],
+    fontName=FONT_NAME if font_registered else 'Helvetica',
+    fontSize=10,
+    leading=14,
+    textColor=colors.black,
+    wordWrap='CJK',
+    spaceAfter=6,
+    keepWithNext=True  # Ensures question stays attached to its options/next flowable
+)
+
+hindi_option_style = ParagraphStyle(
+    'HindiOptionStyle',
+    parent=styles['Normal'],
+    fontName=FONT_NAME if font_registered else 'Helvetica',
+    fontSize=9.5,
+    leading=13,
+    textColor=colors.black,
+    wordWrap='CJK',
+    leftIndent=15,
+    spaceAfter=4
+)
+
 
 class DocumentOptimizer:
     """
@@ -27,10 +79,15 @@ class DocumentOptimizer:
     def optimize_canonical_book(canonical_data: dict) -> dict:
         """
         Iterates through the entire canonical book data structure 
-        and applies high-fidelity safe preservation to all chapters, questions, options, and explanations.
+        and applies high-fidelity safe preservation and multi-column atomic block rules.
         """
         if not canonical_data or "chapters" not in canonical_data:
             return canonical_data
+
+        # Ensure column count constraints are explicitly preserved (Supports 1, 2, or 3 columns)
+        column_count = canonical_data.get("column_count", 2)
+        if column_count not in [1, 2, 3]:
+            canonical_data["column_count"] = 2
 
         for chapter in canonical_data.get("chapters", []):
             if "chapter_title" in chapter:
@@ -45,6 +102,10 @@ class DocumentOptimizer:
 
                 if "explanation" in block and block["explanation"]:
                     block["explanation"] = DocumentOptimizer.clean_hindi_text(block["explanation"])
+                
+                # --- STEP 3: Enforce Atomic Indivisible Block Flag for Multi-Column Layouts ---
+                # Marks each question block so the rendering engine prevents column/page splitting
+                block["cant_split"] = True
 
         return canonical_data
 
