@@ -9,8 +9,9 @@ from reportlab.pdfgen import canvas
 
 def register_fonts():
     font_dir = os.path.join(os.path.dirname(__file__), "fonts")
-    regular_path = os.path.join(font_dir, "NotoSansDevanagari_Condensed-Regular.ttf")
-    bold_path = os.path.join(font_dir, "NotoSansDevanagari_Condensed-Bold.ttf")
+    # Updated to use standard non-condensed Noto Sans Devanagari fonts for flawless matra rendering
+    regular_path = os.path.join(font_dir, "NotoSansDevanagari-Regular.ttf")
+    bold_path = os.path.join(font_dir, "NotoSansDevanagari-Bold.ttf")
     
     pdfmetrics.registerFont(TTFont('HindiRegular', regular_path))
     pdfmetrics.registerFont(TTFont('HindiBold', bold_path))
@@ -188,16 +189,20 @@ def generate_exampur_book(
         textColor=colors.HexColor('#0f172a'),
         alignment=header_alignment,
         spaceAfter=0,
-        spaceBefore=0
+        spaceBefore=0,
+        wordWrap='CJK'
     )
 
+    # --- FIXED STYLES WITH CJK WORD WRAPPING AND KEEP WITH NEXT ---
     question_style = ParagraphStyle(
         name='ExampurQuestion',
         fontName='HindiBold',
         fontSize=font_size,
         leading=line_spacing,          
         spaceAfter=option_top_gap,
-        spaceBefore=3
+        spaceBefore=3,
+        wordWrap='CJK',          # Enables correct Devanagari text breaking & matra integrity
+        keepWithNext=True        # Keeps question attached to options across columns
     )
 
     option_style = ParagraphStyle(
@@ -205,7 +210,8 @@ def generate_exampur_book(
         fontName='HindiRegular',
         fontSize=font_size,
         leading=line_spacing - 1.0,
-        spaceAfter=option_vertical_gap 
+        spaceAfter=option_vertical_gap,
+        wordWrap='CJK'           # Prevents matra fragmentation in options
     )
 
     for index, chap in enumerate(book_data.get("chapters", [])):
@@ -231,8 +237,6 @@ def generate_exampur_book(
             
             for opt in q.get("options", []):
                 story.append(Paragraph(opt, option_style))
-            
-            # Redundant inline green answer text has been completely removed as requested.
 
             if book_type == "solutions" and q.get('explanation'):
                 exp_style = ParagraphStyle(
@@ -242,7 +246,8 @@ def generate_exampur_book(
                     leading=line_spacing - 1.0, 
                     textColor=colors.HexColor('#475569'), 
                     spaceBefore=1, 
-                    spaceAfter=1
+                    spaceAfter=1,
+                    wordWrap='CJK'
                 )
                 story.append(Paragraph(f"Exp: {q.get('explanation')}", exp_style))
 
@@ -259,12 +264,13 @@ def generate_exampur_book(
                 textColor=colors.HexColor('#0f172a'),
                 alignment=header_alignment,
                 spaceAfter=4,
-                spaceBefore=4
+                spaceBefore=4,
+                wordWrap='CJK'
             )
             story.append(Paragraph(f"<b>Answer Key - Chapter {index + 1}</b>", chapter_style_local))
             
-            th_style = ParagraphStyle(name='THStyle', fontName='HindiBold', fontSize=6.5, leading=7.5, textColor=colors.HexColor('#0f172a'), alignment=1)
-            td_style = ParagraphStyle(name='TDStyle', fontName='HindiRegular', fontSize=6.5, leading=7.5, textColor=colors.HexColor('#334155'), alignment=1)
+            th_style = ParagraphStyle(name='THStyle', fontName='HindiBold', fontSize=6.5, leading=7.5, textColor=colors.HexColor('#0f172a'), alignment=1, wordWrap='CJK')
+            td_style = ParagraphStyle(name='TDStyle', fontName='HindiRegular', fontSize=6.5, leading=7.5, textColor=colors.HexColor('#334155'), alignment=1, wordWrap='CJK')
             
             raw_answers = chap.get("answer_key", [])
             num_cols = 5 
