@@ -50,8 +50,7 @@ class CanonicalBookSchema(BaseModel):
 
 def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
     """
-    High-Fidelity Parser tailored for Exampur manuscripts (no pre-existing Q numbers).
-    Preserves 100% raw text fidelity without altering matras or words.
+    High-Fidelity Parser handling inline answers, missing Q numbers, and 100% raw text fidelity.
     """
     blocks = []
     q_count = 1
@@ -61,9 +60,9 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
     current_answer = "A"
     current_exp = ""
     
-    # Patterns to match options and answers accurately
+    # Patterns
     opt_pattern = re.compile(r'^[\(\[]?([A-Da-d])[\)\]]?\s*[\.\-]?\s*(.+)')
-    ans_pattern = re.compile(r'^(?:answer|ans|उत्तर)\s*[:\-]?\s*[\(\[]?([A-Da-d])[\)\]]?(?:\s*[\-\–\—]?\s*(.*))?', re.IGNORECASE)
+    ans_pattern = re.compile(r'(?:answer|ans|उत्तर)\s*[:\-]?\s*[\(\[]?([A-Da-d])[\)\]]?(?:\s*[\-\–\—]?\s*(.*))?', re.IGNORECASE)
     alt_ans_pattern = re.compile(r'\(correct\s*answer\s*[:\-]?\s*([A-Da-d])\)', re.IGNORECASE)
 
     def flush_block():
@@ -91,37 +90,49 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
         if not text:
             continue
 
-        # Check for alternative correct answer like (Correct Answer: B)
-        alt_match = alt_ans_pattern.search(text)
-        if alt_match:
-            current_answer = alt_match.group(1).upper()
+        # Check if line contains an inline answer anywhere
+        ans_search = ans_pattern.search(text)
+        alt_search = alt_ans_pattern.search(text)
+
+        if alt_search:
+            current_answer = alt_search.group(1).upper()
+            # Remove answer part from text if it was attached to an option
+            clean_text = alt_ans_pattern.sub('', text).strip()
+            if clean_text:
+                if len(current_options) < 4:
+                    current_options.append(clean_text)
             flush_block()
             continue
 
-        # Check for standard answer line (उत्तर: / Answer:)
-        ans_match = ans_pattern.match(text)
-        if ans_match:
-            current_answer = ans_match.group(1).upper()
-            if ans_match.group(2):
-                current_exp = ans_match.group(2).strip()
+        if ans_search:
+            ans_str = ans_search.group(0)
+            current_answer = ans_search.group(1).upper()
+            if ans_search.group(2):
+                current_exp = ans_search.group(2).strip()
+            
+            # Extract option part if answer was appended to an option line
+            opt_part = text.replace(ans_str, "").strip()
+            if opt_part and len(current_options) < 4:
+                current_options.append(opt_part)
+            
             flush_block()
             continue
 
-        # Check for option ([A], (A) etc.)
+        # Check for standard option
         opt_match = opt_pattern.match(text)
         if opt_match and len(current_options) < 4:
             current_options.append(text)
             if len(current_options) == 4:
-                # Options are complete, next lines will typically be answer
+                # If we have 4 options, next lines might be answer
                 pass
             continue
 
-        # If options are already 4 and text is not an option/answer, it belongs to the next question
+        # If options are already 4, flush and start next question
         if len(current_options) >= 4:
             flush_block()
             current_options = []
 
-        # Otherwise, accumulate question lines (handling bilingual text smoothly)
+        # Accumulate question text lines
         if current_options:
             current_options[-1] += " " + text
         else:
