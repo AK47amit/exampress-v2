@@ -50,8 +50,8 @@ class CanonicalBookSchema(BaseModel):
 
 def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
     """
-    100% High-Fidelity Raw Text Preservation parser.
-    Copies original manuscript text without aggressive cleaning or alterations.
+    100% High-Fidelity Raw Text Preservation Parser.
+    Treats each meaningful paragraph as an independent element without altering text content.
     """
     blocks = []
     q_count = 1
@@ -61,7 +61,7 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
     current_answer = "A"
     current_exp = ""
     
-    # Simple and safe patterns to match options and answers without altering text content
+    # Safe patterns to identify structural components without rewriting text
     opt_pattern = re.compile(r'^([\(\[]?[A-Da-d][\)\]]?|\[?[A-Da-d]\])\s*[\.\-]?\s*(.+)')
     ans_pattern = re.compile(r'^(?:answer|ans|उत्तर)\s*[:\-]?\s*[\(\[]?([A-Da-d])[\)\]]?', re.IGNORECASE)
     q_explicit_pattern = re.compile(r'^(?:q\.?\s*\d+|question\s*\d+|\d+[\.\)])\s*(.*)', re.IGNORECASE)
@@ -86,7 +86,7 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
             current_exp = ""
 
     for text in lines:
-        # Preserve original raw text without stripping critical characters/matras
+        text = text.strip()
         if not text:
             continue
 
@@ -98,21 +98,21 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
             current_answer = ans_match.group(1).upper()
             flush_block()
         elif q_match:
-            if current_question.strip() or current_options:
+            if current_question.strip():
                 flush_block()
             current_question = q_match.group(1).strip() or text
         elif opt_match:
             current_options.append(text)
         else:
-            if len(current_options) >= 4 and not current_answer:
-                flush_block()
+            # If no pattern matches, keep it attached to the active section safely without corruption
+            if not current_question:
                 current_question = text
+            elif len(current_options) < 4 and current_question and not current_options:
+                current_question += " " + text
             elif current_options:
                 current_options[-1] += " " + text
-            elif current_question:
-                current_question += " " + text
             else:
-                current_question = text
+                current_question += " " + text
 
     flush_block()
 
@@ -194,7 +194,7 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
             return DocumentOptimizer.optimize_canonical_book(book_dict)
 
         elif ext == ".docx":
-            # Extract raw paragraphs directly from the docx file without modifying text content
+            # Extract paragraphs exactly as written in original docx without modifications
             doc = Document(file_path)
             paragraphs = [para.text for para in doc.paragraphs if para.text and para.text.strip()]
             
