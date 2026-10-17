@@ -5,66 +5,44 @@ import gc
 class DocumentOptimizer:
     """
     Handles memory optimization, chapter-wise chunking, garbage collection,
-    and Hindi text normalization for massive publishing projects using ReportLab.
+    and high-fidelity text preservation for massive publishing projects using ReportLab.
     """
 
     @staticmethod
     def clean_hindi_text(text: str) -> str:
         """
-        Normalizes and cleans Devanagari Hindi text extracted from manuscripts.
-        Fixes spacing issues around punctuation, broken matras, double spaces, and Unicode artifacts.
+        High-fidelity text preservation for Devanagari Hindi text extracted from manuscripts.
+        Safely preserves all original characters, matras, and formatting without aggressive alterations.
         """
         if not text or not isinstance(text, str):
             return ""
 
-        # 1. Strip leading/trailing whitespaces
+        # Safe whitespace cleanup while preserving all original Devanagari characters and matras
         cleaned = text.strip()
+        cleaned = re.sub(r'[ \t]+', ' ', cleaned)
 
-        # 2. Remove invisible Unicode whitespace characters & zero-width spaces
-        cleaned = re.sub(r'[\u200b\u200c\u200d\uFEFF]', '', cleaned)
-        cleaned = re.sub(r'\s+', ' ', cleaned)  # Collapse multiple spaces into single space
-
-        # 3. Standardize punctuation spacing in bilingual/Hindi text
-        cleaned = re.sub(r'\s*/\s*', ' / ', cleaned)
-        
-        # Fix spacing before question marks, commas, or full stops (Purna Viram `।`)
-        cleaned = re.sub(r'\s+([।\?,\.])', r'\1', cleaned)
-        
-        # Ensure a single space after full stops or question marks if followed by text
-        cleaned = re.sub(r'([।\?,\.])([^\s\d])', r'\1 \2', cleaned)
-
-        # 4. Standardize option markers (e.g., convert [ a ], ( a ), {A} into uniform [A] format)
-        cleaned = re.sub(r'[\(\{\[]\s*([A-Da-d])\s*[\)\}\]]', r'[\1]', cleaned)
-
-        # 5. Fix common Devanagari / Hindi typesetting spacing bugs around hyphens
-        cleaned = re.sub(r'\s*-\s*', ' - ', cleaned)
-
-        return cleaned.strip()
+        return cleaned
 
     @staticmethod
     def optimize_canonical_book(canonical_data: dict) -> dict:
         """
         Iterates through the entire canonical book data structure 
-        and applies Hindi text cleaning to all chapters, questions, options, and explanations.
+        and applies high-fidelity safe preservation to all chapters, questions, options, and explanations.
         """
         if not canonical_data or "chapters" not in canonical_data:
             return canonical_data
 
         for chapter in canonical_data.get("chapters", []):
-            # Optimize chapter title
             if "chapter_title" in chapter:
                 chapter["chapter_title"] = DocumentOptimizer.clean_hindi_text(chapter["chapter_title"])
 
             for block in chapter.get("blocks", []):
-                # Optimize question text
                 if "text" in block:
                     block["text"] = DocumentOptimizer.clean_hindi_text(block["text"])
 
-                # Optimize options list
                 if "options" in block and isinstance(block["options"], list):
                     block["options"] = [DocumentOptimizer.clean_hindi_text(opt) for opt in block["options"]]
 
-                # Optimize explanation
                 if "explanation" in block and block["explanation"]:
                     block["explanation"] = DocumentOptimizer.clean_hindi_text(block["explanation"])
 
