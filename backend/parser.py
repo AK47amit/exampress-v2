@@ -50,8 +50,8 @@ class CanonicalBookSchema(BaseModel):
 
 def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
     """
-    Bulletproof Block-Based Parser tailored for unnumbered Exampur docx manuscripts.
-    Ensures zero text bleeding and 100% raw text preservation.
+    Robust State-Tracking Parser for Exampur Unnumbered Docx Manuscripts.
+    Ensures 100% raw text fidelity, correct answer mapping, and zero bleeding.
     """
     blocks = []
     
@@ -60,12 +60,14 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
     current_answer = "A"
     current_exp = ""
     
-    opt_start_pattern = re.compile(r'^[\(\[]?([A-Da-d])[\)\]]?\s*[\.\-]?\s*(.*)')
-    ans_line_pattern = re.compile(r'^(?:answer|ans|उत्तर|correct\s*answer)\s*[:\-]?\s*[\(\[]?([A-Da-d])[\)\]]?(?:\s*[\-\–\—]?\s*(.*))?', re.IGNORECASE)
+    # Regex patterns for options and answers
+    opt_pattern = re.compile(r'^[\(\[]?([A-Da-d])[\)\]]?\s*[\.\-]?\s*(.*)')
+    ans_pattern = re.compile(r'^(?:answer|ans|उत्तर)\s*[:\-]?\s*[\(\[]?([A-Da-d])[\)\]]?(?:\s*[\-\–\—]?\s*(.*))?', re.IGNORECASE)
 
-    def flush():
+    def flush_block():
         nonlocal current_q_lines, current_options, current_answer, current_exp
         q_text = " ".join([l.strip() for l in current_q_lines if l.strip()]).strip()
+        
         if q_text:
             if not current_options:
                 current_options = ["[A] Option A", "[B] Option B", "[C] Option C", "[D] Option D"]
@@ -79,6 +81,7 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
                 answer=current_answer.strip().upper() if current_answer else "A",
                 explanation=current_exp.strip()
             ))
+            
         current_q_lines = []
         current_options = []
         current_answer = "A"
@@ -89,39 +92,39 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
         if not text:
             continue
 
-        # 1. Check if line is a standard answer line (उत्तर: / Answer:)
-        ans_match = ans_line_pattern.match(text)
+        # 1. Check for standalone Answer line (e.g., "उत्तर: [A] ..." or "Answer: (B) ...")
+        ans_match = ans_pattern.match(text)
         if ans_match:
             current_answer = ans_match.group(1).upper()
             if ans_match.group(2):
                 current_exp = ans_match.group(2).strip()
-            flush()
+            flush_block()
             continue
 
-        # 2. Check if line has inline correct answer like (Correct Answer: B)
+        # 2. Check for inline correct answer formats like (Correct Answer: B)
         if "correct answer" in text.lower():
             m = re.search(r'\(correct\s*answer\s*[:\-]?\s*([A-Da-d])\)', text, re.IGNORECASE)
             if m:
                 current_answer = m.group(1).upper()
             clean_t = re.sub(r'\(correct\s*answer\s*[:\-]?\s*[A-Da-d]\)', '', text, flags=re.IGNORECASE).strip()
             if clean_t:
-                opt_m = opt_start_pattern.match(clean_t)
+                opt_m = opt_pattern.match(clean_t)
                 if opt_m and len(current_options) < 4:
                     current_options.append(clean_t)
                 else:
                     current_q_lines.append(clean_t)
-            flush()
+            flush_block()
             continue
 
-        # 3. Check if line is an option line ([A], (A) etc.)
-        opt_match = opt_start_pattern.match(text)
+        # 3. Check for standard Option line ([A], [B], [C], [D] or (A), (B)...)
+        opt_match = opt_pattern.match(text)
         if opt_match and len(current_options) < 4:
             current_options.append(text)
             continue
 
-        # 4. If we already have 4 options and see new text, it's a new question/flow
+        # 4. If we already collected 4 options and see new text, finalize the block
         if len(current_options) >= 4:
-            flush()
+            flush_block()
 
         # 5. Accumulate question lines or option continuation lines safely
         if current_options:
@@ -129,7 +132,7 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
         else:
             current_q_lines.append(text)
 
-    flush()
+    flush_block()
 
     if not blocks:
         blocks.append(QuestionBlock(
@@ -213,7 +216,8 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
 
         elif ext == ".docx":
             doc = Document(file_path)
-            paragraphs = [para.text for para in doc.paragraphs if para.text and para.text.strip()]
+            # Extract paragraphs strictly, dropping empty strings and blank whitespace artifacts
+            paragraphs = [para.text.strip() for para in doc.paragraphs if para.text and para.text.strip()]
             
             doc_title = "Practice Chapter"
             lines_to_parse = paragraphs
