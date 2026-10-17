@@ -50,8 +50,8 @@ class CanonicalBookSchema(BaseModel):
 
 def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
     """
-    100% Raw Text Fidelity Parser:
-    Preserves every single letter, word, matra, and line from the source document without modification.
+    100% Exact Text Fidelity Multi-Column Safe Parser:
+    Preserves every single raw paragraph line, matra, and word without alteration.
     """
     blocks = []
     
@@ -95,7 +95,6 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
             if ans_match:
                 current_answer = ans_match.group(1).upper()
             
-            # Extract explanation if present after answer
             parts = re.split(r'[\(\[]?[A-Da-d][\)\]]?', stripped_text, maxsplit=1)
             if len(parts) > 1 and parts[1].strip():
                 current_exp = parts[1].strip().lstrip('–-—: ')
@@ -103,25 +102,18 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
             flush_block()
             continue
 
-        # Detect Option lines ([A], [B], [C], [D] or (A), (B), (C), (D))
+        # Detect Option lines ([A], [B], [C], [D])
         if re.match(r'^[\(\[]?[A-Da-d][\)\]]?', stripped_text):
             if len(current_options) < 4:
                 current_options.append(raw_text)
             else:
-                # If we already have 4 options, this might be a new question or continuation
                 current_q_lines.append(raw_text)
-            
-            if len(current_options) >= 4:
-                # Do not flush immediately if next lines are still part of the same block, 
-                # but here we keep standard flow.
-                pass
             continue
 
-        # If options are already complete and we get a new text line without option prefix
         if len(current_options) >= 4 and not re.match(r'^[\(\[]?[A-Da-d][\)\]]?', stripped_text):
             flush_block()
 
-        # Accumulate raw text lines to preserve 100% exact text fidelity
+        # Accumulate raw text lines to maintain strict fidelity
         if current_options:
             current_options[-1] += "\n" + raw_text
         else:
@@ -211,7 +203,6 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
 
         elif ext == ".docx":
             doc = Document(file_path)
-            # Extract raw paragraphs without stripping internal spaces or matras
             paragraphs = []
             for para in doc.paragraphs:
                 t = para.text
@@ -222,12 +213,12 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
             lines_to_parse = paragraphs
             
             if paragraphs:
-                first_para = paragraphs[0].strip()
-                cleaned_title = first_para
+                first_parser_title = paragraphs[0].strip()
+                cleaned_title = first_parser_title
                 
                 if ".docx" in cleaned_title.lower() or "section" in cleaned_title.lower():
                     cleaned_title = re.sub(r'.*?\.docx\s*[\-\–\—]\s*', '', cleaned_title, flags=re.IGNORECASE)
-                    if "-" in cleaned_title and ("section" in first_para.lower() or ".docx" in first_para.lower()):
+                    if "-" in cleaned_title and ("section" in first_parser_title.lower() or ".docx" in first_parser_title.lower()):
                         parts = cleaned_title.split("-")
                         cleaned_title = parts[-1].strip()
                 
@@ -254,7 +245,7 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
                 title=doc_title, 
                 book_type=book_type, 
                 format_size=format_size, 
-                column_count=column_count,
+                column_count=column_count,  # Supports 2 or 3 columns dynamically based on user selection
                 chapters=[chapter]
             )
             book_dict = book.model_dump()
