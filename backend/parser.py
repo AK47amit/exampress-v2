@@ -1,5 +1,6 @@
 import os
 import re
+import unicodedata
 import pandas as pd
 from docx import Document
 from pydantic import BaseModel, Field, field_validator
@@ -203,12 +204,16 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
 
         elif ext == ".docx":
             doc = Document(file_path)
-            # Extract absolute raw paragraphs without stripping or modifying internal strings
+            # Extract absolute raw paragraphs with NFC Normalization for flawless Hindi text rendering
             paragraphs = []
             for para in doc.paragraphs:
                 t = para.text
                 if t and t.strip() and not t.strip().isdigit() and not " | " in t:
-                    paragraphs.append(t)
+                    # Normalize Devanagari characters and matras to NFC composite form
+                    t_normalized = unicodedata.normalize('NFC', t)
+                    # Strip hidden artifacts and zero-width formatting characters
+                    t_cleaned = re.sub(r'[\u200b\u200c\u200d\ufeff]', '', t_normalized)
+                    paragraphs.append(t_cleaned.strip())
             
             doc_title = "Practice Chapter"
             lines_to_parse = paragraphs
