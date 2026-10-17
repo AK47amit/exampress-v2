@@ -204,14 +204,14 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
 
         elif ext == ".docx":
             doc = Document(file_path)
-            # Extract absolute raw paragraphs with NFC Normalization for flawless Hindi text rendering
             paragraphs = []
             for para in doc.paragraphs:
-                t = para.text
+                # Direct XML text node extraction to bypass python-docx run fragmentation bug
+                t = "".join(node.text for node in para._element.xpath('.//w:t') if node.text)
+                
                 if t and t.strip() and not t.strip().isdigit() and not " | " in t:
-                    # Normalize Devanagari characters and matras to NFC composite form
+                    # Unicode NFC Normalization for flawless Devanagari character and matra rendering
                     t_normalized = unicodedata.normalize('NFC', t)
-                    # Strip hidden artifacts and zero-width formatting characters
                     t_cleaned = re.sub(r'[\u200b\u200c\u200d\ufeff]', '', t_normalized)
                     paragraphs.append(t_cleaned.strip())
             
@@ -251,7 +251,7 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
                 title=doc_title, 
                 book_type=book_type, 
                 format_size=format_size, 
-                column_count=column_count,  # Supports 1, 2, or 3 columns dynamically as requested
+                column_count=column_count,
                 chapters=[chapter]
             )
             book_dict = book.model_dump()
