@@ -50,8 +50,8 @@ class CanonicalBookSchema(BaseModel):
 
 def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
     """
-    100% Exact Text Fidelity Multi-Column Safe Parser:
-    Preserves every single raw paragraph line, matra, and word without alteration.
+    Zero-Modification 100% Literal Text Fidelity Parser:
+    Does not alter, reformat, or split any Hindi/English words, letters, or matras.
     """
     blocks = []
     
@@ -89,7 +89,7 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
         if not stripped_text:
             continue
 
-        # Detect Answer line
+        # Check if line is strictly an Answer line without touching text content
         if stripped_text.lower().startswith("answer") or stripped_text.lower().startswith("ans") or stripped_text.startswith("उत्तर"):
             ans_match = re.search(r'[:\-]?\s*[\(\[]?([A-Da-d])[\)\]]?', stripped_text)
             if ans_match:
@@ -102,7 +102,7 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
             flush_block()
             continue
 
-        # Detect Option lines ([A], [B], [C], [D])
+        # Check if line is an Option ([A], [B], [C], [D])
         if re.match(r'^[\(\[]?[A-Da-d][\)\]]?', stripped_text):
             if len(current_options) < 4:
                 current_options.append(raw_text)
@@ -113,7 +113,7 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
         if len(current_options) >= 4 and not re.match(r'^[\(\[]?[A-Da-d][\)\]]?', stripped_text):
             flush_block()
 
-        # Accumulate raw text lines to maintain strict fidelity
+        # Direct raw accumulation to preserve exact matras and letters
         if current_options:
             current_options[-1] += "\n" + raw_text
         else:
@@ -203,6 +203,7 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
 
         elif ext == ".docx":
             doc = Document(file_path)
+            # Extract absolute raw paragraphs without stripping or modifying internal strings
             paragraphs = []
             for para in doc.paragraphs:
                 t = para.text
@@ -213,12 +214,12 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
             lines_to_parse = paragraphs
             
             if paragraphs:
-                first_parser_title = paragraphs[0].strip()
-                cleaned_title = first_parser_title
+                first_para = paragraphs[0].strip()
+                cleaned_title = first_para
                 
                 if ".docx" in cleaned_title.lower() or "section" in cleaned_title.lower():
                     cleaned_title = re.sub(r'.*?\.docx\s*[\-\–\—]\s*', '', cleaned_title, flags=re.IGNORECASE)
-                    if "-" in cleaned_title and ("section" in first_parser_title.lower() or ".docx" in first_parser_title.lower()):
+                    if "-" in cleaned_title and ("section" in first_para.lower() or ".docx" in first_para.lower()):
                         parts = cleaned_title.split("-")
                         cleaned_title = parts[-1].strip()
                 
@@ -245,7 +246,7 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
                 title=doc_title, 
                 book_type=book_type, 
                 format_size=format_size, 
-                column_count=column_count,  # Supports 2 or 3 columns dynamically based on user selection
+                column_count=column_count,  # Supports 1, 2, or 3 columns dynamically as requested
                 chapters=[chapter]
             )
             book_dict = book.model_dump()
