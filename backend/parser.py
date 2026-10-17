@@ -49,6 +49,10 @@ class CanonicalBookSchema(BaseModel):
 
 
 def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
+    """
+    100% High-Fidelity Raw Text Preservation parser.
+    Copies original manuscript text without aggressive cleaning or alterations.
+    """
     blocks = []
     q_count = 1
     
@@ -57,11 +61,9 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
     current_answer = "A"
     current_exp = ""
     
-    # Robust Patterns for Exampur manuscripts (supporting [A], (A), A., etc.)
+    # Simple and safe patterns to match options and answers without altering text content
     opt_pattern = re.compile(r'^([\(\[]?[A-Da-d][\)\]]?|\[?[A-Da-d]\])\s*[\.\-]?\s*(.+)')
     ans_pattern = re.compile(r'^(?:answer|ans|उत्तर)\s*[:\-]?\s*[\(\[]?([A-Da-d])[\)\]]?', re.IGNORECASE)
-    ans_fallback_pattern = re.compile(r'^(?:answer|ans|उत्तर)\s*[:\-]\s*(.*)', re.IGNORECASE)
-    exp_pattern = re.compile(r'^(?:explanation|exp|स्पष्टीकरण)\s*[:\-]\s*(.*)', re.IGNORECASE)
     q_explicit_pattern = re.compile(r'^(?:q\.?\s*\d+|question\s*\d+|\d+[\.\)])\s*(.*)', re.IGNORECASE)
 
     def flush_block():
@@ -84,47 +86,25 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
             current_exp = ""
 
     for text in lines:
-        text = text.strip()
+        # Preserve original raw text without stripping critical characters/matras
         if not text:
             continue
 
         q_match = q_explicit_pattern.match(text)
         opt_match = opt_pattern.match(text)
         ans_match = ans_pattern.match(text)
-        ans_fallback_match = ans_fallback_pattern.match(text)
-        exp_match = exp_pattern.match(text)
 
-        if q_match:
+        if ans_match:
+            current_answer = ans_match.group(1).upper()
             flush_block()
+        elif q_match:
+            if current_question.strip() or current_options:
+                flush_block()
             current_question = q_match.group(1).strip() or text
-
         elif opt_match:
             current_options.append(text)
-            # If we already collected 4 options and encounter a new option or text, check if we need to flush later
-
-        elif ans_match:
-            try:
-                current_answer = ans_match.group(1).strip().upper()
-            except Exception:
-                current_answer = "A"
-
-        elif ans_fallback_match:
-            val = ans_fallback_match.group(1).strip()
-            letter_match = re.search(r'[\(\[]?([A-Da-d])[\)\]]?', val)
-            if letter_match:
-                current_answer = letter_match.group(1).upper()
-            else:
-                current_answer = val[0].upper() if val else "A"
-            # Answer milne par question block complete ho gaya, flush kar do
-            flush_block()
-
-        elif exp_match:
-            current_exp = exp_match.group(1).strip()
-            flush_block()
-
         else:
-            # Exampur format handling: If we already have 4 options and text comes, it's the next question!
-            if len(current_options) >= 4:
+            if len(current_options) >= 4 and not current_answer:
                 flush_block()
                 current_question = text
             elif current_options:
@@ -214,14 +194,15 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
             return DocumentOptimizer.optimize_canonical_book(book_dict)
 
         elif ext == ".docx":
+            # Extract raw paragraphs directly from the docx file without modifying text content
             doc = Document(file_path)
-            paragraphs = [para.text.strip() for para in doc.paragraphs if para.text.strip()]
+            paragraphs = [para.text for para in doc.paragraphs if para.text and para.text.strip()]
             
             doc_title = "Practice Chapter"
             lines_to_parse = paragraphs
             
             if paragraphs:
-                first_para = paragraphs[0]
+                first_para = paragraphs[0].strip()
                 cleaned_title = first_para
                 
                 if ".docx" in cleaned_title.lower() or "section" in cleaned_title.lower():
