@@ -4,7 +4,7 @@ import pandas as pd
 from docx import Document
 from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional
-from .optimizer import DocumentOptimizer
+from optimizer import DocumentOptimizer
 
 try:
     import pypdf
