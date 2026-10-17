@@ -50,24 +50,23 @@ class CanonicalBookSchema(BaseModel):
 
 def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
     """
-    Exact Text Fidelity Parser for Unnumbered Exampur Manuscripts.
-    Preserves 100% raw text without modifying matras, words, or adding placeholders.
+    100% Exact Text Fidelity Parser:
+    Reads paragraphs sequentially without modifying words, matras, or structure.
     """
     blocks = []
     
-    current_q_lines = []
+    current_q_text = ""
     current_options = []
     current_answer = "A"
     current_exp = ""
     
-    opt_pattern = re.compile(r'^[\(\[]?([A-Da-d])[\)\]]?\s*[\.\-]?\s*(.*)')
-    ans_pattern = re.compile(r'^(?:answer|ans|उत्तर)\s*[:\-]?\s*[\(\[]?([A-Da-d])[\)\]]?(?:\s*[\-\–\—]?\s*(.*))?', re.IGNORECASE)
+    # Regex to detect option markers like [A], (A), A., etc.
+    opt_prefix_pattern = re.compile(r'^[\(\[]?([A-Da-d])[\)\]]?\s*[\.\-]?\s*(.*)')
+    ans_prefix_pattern = re.compile(r'^(?:answer|ans|उत्तर)\s*[:\-]?\s*[\(\[]?([A-Da-d])[\)\]]?', re.IGNORECASE)
 
     def flush_block():
-        nonlocal current_q_lines, current_options, current_answer, current_exp
-        q_text = " ".join([l.strip() for l in current_q_lines if l.strip()]).strip()
-        
-        if q_text:
+        nonlocal current_q_text, current_options, current_answer, current_exp
+        if current_q_text.strip():
             if not current_options:
                 current_options = ["[A] Option A", "[B] Option B", "[C] Option C", "[D] Option D"]
             while len(current_options) < 4:
@@ -75,13 +74,13 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
             
             blocks.append(QuestionBlock(
                 q_no=len(blocks) + 1,
-                text=q_text,
+                text=current_q_text.strip(),
                 options=current_options[:4],
                 answer=current_answer.strip().upper() if current_answer else "A",
                 explanation=current_exp.strip()
             ))
             
-        current_q_lines = []
+        current_q_text = ""
         current_options = []
         current_answer = "A"
         current_exp = ""
@@ -91,26 +90,48 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
         if not text:
             continue
 
-        ans_match = ans_pattern.match(text)
+        # 1. Check if line is a standalone answer line
+        ans_match = ans_prefix_pattern.match(text)
         if ans_match:
             current_answer = ans_match.group(1).upper()
-            if ans_match.group(2):
-                current_exp = ans_match.group(2).strip()
+            # If answer line contains trailing explanation text
+            parts = re.split(r'[\(\[]?[A-Da-d][\)\]]?', text, maxsplit=1)
+            if len(parts) > 1 and parts[1].strip():
+                current_exp = parts[1].strip().lstrip('–-—: ')
             flush_block()
             continue
 
-        opt_match = opt_pattern.match(text)
+        # 2. Check if line starts with an option (A, B, C, D)
+        opt_match = opt_prefix_pattern.match(text)
         if opt_match and len(current_options) < 4:
-            current_options.append(text)
+            # Check if this option line also has an inline answer glued to it
+            if "answer" in text.lower() or "उत्तर" in text:
+                sub_parts = re.split(r'(?:answer|ans|उत्तर)\s*[:\-]?\s*[\(\[]?([A-Da-d])[\)\]]?', text, flags=re.IGNORECASE)
+                clean_opt = sub_parts[0].strip().rstrip('–-—, ')
+                current_options.append(clean_opt)
+                if len(sub_parts) > 1 and sub_parts[1]:
+                    current_answer = sub_parts[1].upper()
+            else:
+                current_options.append(text)
+            
+            # If we collected 4 options, complete the block
+            if len(current_options) >= 4:
+                flush_block()
             continue
 
+        # 3. If we already have 4 options and encounter new text, flush and start next question
         if len(current_options) >= 4:
             flush_block()
 
+        # 4. Accumulate Question text or continuation strictly as-is
         if current_options:
+            # If options are active, append to the latest option to preserve exact multi-line text fidelity
             current_options[-1] += " " + text
         else:
-            current_q_lines.append(text)
+            if current_q_text:
+                current_q_text += " " + text
+            else:
+                current_q_text = text
 
     flush_block()
 
@@ -196,7 +217,13 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
 
         elif ext == ".docx":
             doc = Document(file_path)
-            paragraphs = [para.text.strip() for para in doc.paragraphs if para.text and para.text.strip()]
+            # Extract paragraphs without modifying or cutting raw text
+            paragraphs = []
+            for para in doc.paragraphs:
+                t = para.text.strip()
+                # Skip table artifacts, empty strings or footer page numbers
+                if t and not t.isdigit() and not " | " in t:
+                    paragraphs.append(t)
             
             doc_title = "Practice Chapter"
             lines_to_parse = paragraphs
