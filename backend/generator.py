@@ -9,9 +9,20 @@ from reportlab.pdfgen import canvas
 
 def register_fonts():
     font_dir = os.path.join(os.path.dirname(__file__), "fonts")
-    # Updated to use standard non-condensed Noto Sans Devanagari fonts for flawless matra rendering
-    regular_path = os.path.join(font_dir, "NotoSansDevanagari-Regular.ttf")
-    bold_path = os.path.join(font_dir, "NotoSansDevanagari-Bold.ttf")
+    
+    # Safe Fallback Candidates for Regular & Bold Fonts
+    regular_candidates = [
+        os.path.join(font_dir, "NotoSansDevanagari-Regular.ttf"),
+        os.path.join(font_dir, "NotoSansDevanagari_Condensed-Regular.ttf")
+    ]
+    bold_candidates = [
+        os.path.join(font_dir, "NotoSansDevanagari-Bold.ttf"),
+        os.path.join(font_dir, "NotoSansDevanagari_Condensed-Bold.ttf")
+    ]
+    
+    # Pick the first available font file safely to prevent missing file crashes on production server
+    regular_path = next((p for p in regular_candidates if os.path.exists(p)), regular_candidates[0])
+    bold_path = next((p for p in bold_candidates if os.path.exists(p)), bold_candidates[0])
     
     pdfmetrics.registerFont(TTFont('HindiRegular', regular_path))
     pdfmetrics.registerFont(TTFont('HindiBold', bold_path))
