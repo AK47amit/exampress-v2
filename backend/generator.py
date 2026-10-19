@@ -135,6 +135,8 @@ class PDFGenerator:
                         "--disable-setuid-sandbox",
                         "--disable-dev-shm-usage",
                         "--disable-gpu",
+                        "--disable-features=IsolateOrigins,site-per-process",
+                        "--disable-site-isolation-trials",
                         "--hide-scrollbars",
                         "--disable-breakpad"
                     ]
