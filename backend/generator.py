@@ -143,7 +143,9 @@ class PDFGenerator:
                 )
                 page = browser.new_page()
                 
-                page.goto(f"file://{os.path.abspath(temp_html_path)}")
+                # Safely load HTML with domcontentloaded and stability wait
+                page.goto(f"file://{os.path.abspath(temp_html_path)}", wait_until="domcontentloaded")
+                page.wait_for_timeout(1000)
                 
                 pdf_options = {
                     "path": output_filename,
