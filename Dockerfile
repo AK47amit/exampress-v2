@@ -4,11 +4,14 @@ WORKDIR /app
 
 ENV PYTHONPATH=/app/backend
 
+# Install system libraries AND fonts required for Chromium PDF rendering
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     wget \
     gnupg \
     chromium \
+    fonts-liberation \
+    fontconfig \
     libglib2.0-0 \
     libnss3 \
     libnspr4 \
