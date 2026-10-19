@@ -2,8 +2,8 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# Invalidate build cache to force re-running apt-get and dependency installation
-ARG CACHE_BUST=20261019
+# Set PYTHONPATH so Python can locate modules inside the backend folder
+ENV PYTHONPATH=/app/backend
 
 # Install all required system libraries for Chromium & Chrome CLI
 RUN apt-get update && apt-get install -y --no-install-recommends \
