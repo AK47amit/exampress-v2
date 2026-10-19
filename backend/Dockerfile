@@ -1,10 +1,8 @@
-# Use official lightweight Python 3.10 image
 FROM python:3.10-slim
 
-# Set working directory inside container
 WORKDIR /app
 
-# Install essential system dependencies for building packages & running Playwright Chromium
+# Install all required system libraries for Playwright & Chromium
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libffi-dev \
@@ -26,21 +24,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libasound2 \
     libpango-1.0-0 \
     libcairo2 \
+    libpangoft2-1.0-0 \
+    libharfbuzz0b \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Force Playwright to install browser binaries to a persistent path
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+# Install Playwright along with all required system dependencies and browser binaries
 RUN playwright install --with-deps chromium
 
-# Copy the rest of the backend application code
 COPY . .
 
-# Expose port 8080 for Railway
 EXPOSE 8080
 
-# Run Uvicorn server pointing correctly to backend.app:app
 CMD ["uvicorn", "backend.app:app", "--host", "0.0.0.0", "--port", "8080"]
