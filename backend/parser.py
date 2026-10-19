@@ -51,38 +51,24 @@ class CanonicalBookSchema(BaseModel):
 
 def fix_devanagari_visual_order(text: str) -> str:
     """
-    Comprehensive Devanagari Visual-to-Logical Normalization Engine:
-    Corrects visual-order typing quirks in docx where dependent vowel matras (like U+093F 'ि') 
-    or half-letter combinations are stored after consonants, and maps them to pure Unicode logical order.
+    Universal Algorithmic Devanagari Normalization & Reordering Engine:
+    Applies NFC composition to fix fragmented/broken characters, strips invisible control codes,
+    and dynamically shifts visual-order short 'i' matra (U+093F) to proper Unicode logical order.
     """
     if not text:
         return text
         
-    # 1. Base NFC Normalization
+    # 1. Base Unicode NFC Normalization (joins decomposed/broken characters into correct composite form)
     text = unicodedata.normalize('NFC', text)
     
-    # 2. Fix misplaced short 'i' matra (U+093F) stored after consonants/clusters using lambda function
+    # 2. Strip invisible zero-width spaces and control characters that cause rendering artifacts
+    text = re.sub(r'[\u200b\u200c\u200d\ufeff]', '', text)
+    
+    # 3. Universal algorithmic pattern for short 'i' matra inversion:
+    # Matches any consonant or conjunct cluster followed by U+093F and shifts U+093F to the front.
     pattern_i_matra = r'((?:[\u0915-\u0939]\u094D)*[\u0915-\u0939])\u093F'
     text = re.sub(pattern_i_matra, lambda m: '\u093F' + m.group(1), text)
     
-    # 3. Specific targeted corrections for common corrupted word patterns found in docx extraction:
-    replacements = {
-        "मसि": "मिस",
-        "कसि": "किसी",
-        "यूनविरिस": "यूनिवर्स",
-        "वशिव": "विश्व",
-        "इंथ्या": "इंडिया",
-        "इंड्या": "इंडिया",
-        "सथिति": "स्थिति",
-        "शखिर": "शिखर",
-        "मंतुरस्तरीय": "मंत्रीस्तरीय",
-        "सगिपुर": "सिंगापुर",
-        "सत्तर्": "सत्र"
-    }
-    
-    for wrong, right in replacements.items():
-        text = text.replace(wrong, right)
-        
     return text
 
 
@@ -236,14 +222,13 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
             doc = Document(file_path)
             paragraphs = []
             for para in doc.paragraphs:
-                # Direct XML text node extraction to bypass python-docx run fragmentation
+                # Direct XML text node extraction to bypass python-docx run fragmentation bug
                 t = "".join(node.text for node in para._element.xpath('.//w:t') if node.text)
                 
                 if t and t.strip() and not t.strip().isdigit() and not " | " in t:
-                    # Apply comprehensive Devanagari visual-to-logical normalization & correction
+                    # Apply universal algorithmic normalization and reordering
                     t_fixed = fix_devanagari_visual_order(t)
-                    t_cleaned = re.sub(r'[\u200b\u200c\u200d\ufeff]', '', t_fixed)
-                    paragraphs.append(t_cleaned.strip())
+                    paragraphs.append(t_fixed.strip())
             
             doc_title = "Practice Chapter"
             lines_to_parse = paragraphs
