@@ -131,7 +131,6 @@ class PDFGenerator:
             with open(temp_html_path, "w", encoding="utf-8") as f:
                 f.write(rendered_html)
 
-            # Using official sync playwright wrapper with proper sandbox args for Linux container
             with sync_playwright() as p:
                 browser = p.chromium.launch(
                     headless=True,
@@ -145,19 +144,25 @@ class PDFGenerator:
                 page = browser.new_page()
                 
                 page.goto(f"file://{os.path.abspath(temp_html_path)}")
-                page_format = "B5" if format_size.upper() == "B5" else "A4"
                 
-                page.pdf(
-                    path=output_filename,
-                    format=page_format,
-                    print_background=True,
-                    margin={
+                pdf_options = {
+                    "path": output_filename,
+                    "print_background": True,
+                    "margin": {
                         "top": f"{top_header_margin}mm", 
                         "bottom": f"{footer_bottom_margin}mm", 
                         "left": "20mm", 
                         "right": "20mm"
                     }
-                )
+                }
+
+                if format_size.upper() == "B5":
+                    pdf_options["width"] = "176mm"
+                    pdf_options["height"] = "250mm"
+                else:
+                    pdf_options["format"] = "A4"
+
+                page.pdf(**pdf_options)
                 browser.close()
                 
             if os.path.exists(temp_html_path):
