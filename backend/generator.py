@@ -135,13 +135,16 @@ class PDFGenerator:
                         "--disable-setuid-sandbox",
                         "--disable-dev-shm-usage",
                         "--disable-gpu",
-                        "--run-all-compositor-stages-before-draw"
+                        "--single-process",
+                        "--no-zygote",
+                        "--hide-scrollbars",
+                        "--disable-breakpad"
                     ]
                 )
                 page = browser.new_page()
                 
                 page.set_content(rendered_html, wait_until="domcontentloaded")
-                page.wait_for_timeout(1000)
+                page.wait_for_timeout(1500)
                 
                 pdf_args = {
                     "print_background": True,
@@ -159,7 +162,6 @@ class PDFGenerator:
                 else:
                     pdf_args["format"] = "A4"
 
-                # Generate PDF as bytes to bypass internal Chromium file writing permission errors
                 pdf_bytes = page.pdf(**pdf_args)
                 browser.close()
 
