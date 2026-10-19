@@ -12,8 +12,8 @@ from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from typing import Optional
 
-from .parser import parse_uploaded_file
-from generator import generate_exampur_book
+from parser import parse_uploaded_file
+from generator import PDFGenerator
 from archive_parser import extract_and_parse_archive
 from idml_generator import IDMLGenerator  # Phase 7: Adobe IDML Interchange Generator
 from monitoring import init_sentry, logger  # Phase 8.2: Sentry Error Tracking & Logging
@@ -86,7 +86,7 @@ def health_check(request: Request):
         "pipeline_status": "Active",
         "modules": {
             "parser": "Operational",
-            "generator": "Operational (ReportLab Pure Python)",
+            "generator": "Operational (Playwright Chromium + Jinja2)",
             "archive_extractor": "Operational",
             "pdf_preview": "Operational" if fitz else "Degraded (PyMuPDF missing)",
             "saas_auth_database": "Operational",
@@ -103,7 +103,6 @@ def health_check(request: Request):
 @app.post("/api/v2/auth/register")
 @limiter.limit("10/minute")
 def register_user(request: Request, user_data: UserCreate, db = Depends(get_db)):
-    """Registers a new user in the enterprise SaaS database with rate limiting."""
     existing_user = db.query(User).filter(User.email == user_data.email).first()
     if existing_user:
         logger.warning(f"Registration failed: Email already exists - {user_data.email}")
@@ -122,7 +121,6 @@ def register_user(request: Request, user_data: UserCreate, db = Depends(get_db))
 @app.post("/api/v2/auth/login")
 @limiter.limit("20/minute")
 def login_for_access_token(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db = Depends(get_db)):
-    """Authenticates user credentials and issues a secure JWT access token with rate limiting."""
     user = db.query(User).filter(User.email == form_data.username).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
         logger.warning(f"Authentication failed for user: {form_data.username}")
@@ -132,7 +130,7 @@ def login_for_access_token(request: Request, form_data: OAuth2PasswordRequestFor
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    access_token_expires = timedelta(minutes=1440) # 24 Hours
+    access_token_expires = timedelta(minutes=1440)
     access_token = create_access_data_token(
         data={"sub": user.email}, expires_delta=access_token_expires
     )
@@ -143,7 +141,6 @@ def login_for_access_token(request: Request, form_data: OAuth2PasswordRequestFor
 @app.post("/api/v2/projects")
 @limiter.limit("30/minute")
 def save_user_project(request: Request, project: ProjectSaveRequest, current_user: User = Depends(get_current_user), db = Depends(get_db)):
-    """Saves a generated book project securely to the authenticated user's profile vault."""
     new_project = Project(
         title=project.title,
         book_type=project.book_type,
@@ -166,7 +163,6 @@ def save_user_project(request: Request, project: ProjectSaveRequest, current_use
 
 @app.get("/api/v2/projects")
 def get_user_projects(current_user: User = Depends(get_current_user), db = Depends(get_db)):
-    """Retrieves all saved book projects belonging to the logged-in user."""
     projects = db.query(Project).filter(Project.user_id == current_user.id).all()
     return {
         "status": "success",
@@ -184,7 +180,7 @@ def get_user_projects(current_user: User = Depends(get_current_user), db = Depen
     }
 
 
-# --- PHASE 5.4: ASYNCHRONOUS BACKGROUND JOBS & QUEUING (PUBLICLY ACCESSIBLE) ---
+# --- PHASE 5.4: ASYNCHRONOUS BACKGROUND JOBS & QUEUING ---
 
 job_status_store = {}
 
@@ -209,9 +205,10 @@ def background_generate_book_task(
 ):
     try:
         job_status_store[job_id] = {"status": "processing", "progress": 50}
-        logger.info(f"Background Job {job_id}: Starting ReportLab PDF generation...")
+        logger.info(f"Background Job {job_id}: Starting Playwright PDF generation...")
         
-        generate_output = generate_exampur_book(
+        pdf_gen = PDFGenerator()
+        generate_output = pdf_gen.generate_pdf(
             output_filename=output_path,
             book_type=book_type,
             format_size=format_size,
@@ -249,7 +246,6 @@ async def generate_book_async(
     book_type: str = Form("quiz"),
     format_size: str = Form("B5"),
     column_count: int = Form(2),
-    # Control Panel Spacing Parameters
     font_size: float = Form(9.0),
     line_spacing: float = Form(13.0),
     question_gap: float = Form(6.0),
@@ -257,17 +253,12 @@ async def generate_book_async(
     column_gap_val: float = Form(10.0),
     footer_bottom_margin: float = Form(20.0),
     option_vertical_gap: float = Form(1.5),
-    # Frontend Toolbar Chapter Heading Customization Parameters
     header_font_size: float = Form(11.0),
     header_bold: bool = Form(True),
     header_italic: bool = Form(False),
     header_alignment: int = Form(1),
     file: UploadFile = File(None)
 ):
-    """
-    Initiates heavy book generation in the background with custom typesetting parameters.
-    Returns a Job ID immediately for status tracking.
-    """
     job_id = str(uuid.uuid4())
     output_pdf_path = os.path.join(tempfile.gettempdir(), f"exampress_job_{job_id}.pdf")
     
@@ -370,7 +361,6 @@ async def generate_book_async(
 
 @app.get("/api/v2/jobs/{job_id}")
 def check_job_status(job_id: str):
-    """Checks the live progress and status of a queued background job (Public endpoint)."""
     job = job_status_store.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job ID not found.")
@@ -388,10 +378,6 @@ async def export_book_idml(
     column_count: int = Form(2),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Exports book canonical data into an Adobe InDesign (IDML) package 
-    for professional layout editing and designer workflows.
-    """
     tmp_idml_path = tempfile.NamedTemporaryFile(delete=False, suffix=".idml").name
     
     try:
@@ -444,7 +430,7 @@ async def export_book_idml(
                 pass
 
 
-# --- EXISTING CORE GENERATION & PREVIEW ENDPOINTS ---
+# --- CORE GENERATION & PREVIEW ENDPOINTS ---
 
 @app.post("/generate-book")
 @limiter.limit("20/minute")
@@ -453,7 +439,6 @@ async def generate_book(
     book_type: str = Form(...),
     format_size: str = Form(...),
     column_count: int = Form(2),
-    # Control Panel Spacing Parameters
     font_size: float = Form(9.0),
     line_spacing: float = Form(13.0),
     question_gap: float = Form(6.0),
@@ -461,7 +446,6 @@ async def generate_book(
     column_gap_val: float = Form(10.0),
     footer_bottom_margin: float = Form(20.0),
     option_vertical_gap: float = Form(1.5),
-    # Frontend Toolbar Chapter Heading Customization Parameters
     header_font_size: float = Form(11.0),
     header_bold: bool = Form(True),
     header_italic: bool = Form(False),
@@ -535,7 +519,9 @@ async def generate_book(
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_out:
             tmp_output_path = tmp_out.name
 
-        output_pdf = generate_exampur_book(
+        # --- PLAYWRIGHT PDF GENERATOR EXECUTION ---
+        pdf_gen = PDFGenerator()
+        output_pdf = pdf_gen.generate_pdf(
             output_filename=tmp_output_path,
             book_type=book_type,
             format_size=format_size,
@@ -560,7 +546,7 @@ async def generate_book(
         with open(output_pdf, "rb") as f:
             pdf_bytes = f.read()
             
-        logger.info(f"Book generated successfully via ReportLab: {book_type} ({format_size})")
+        logger.info(f"Book generated successfully via Playwright Engine: {book_type} ({format_size})")
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
@@ -586,14 +572,9 @@ async def generate_book(
                 pass
 
 
-# Phase 4.1: PDF Preview & Thumbnail Generator Endpoint
 @app.post("/api/v2/preview-pdf")
 @limiter.limit("30/minute")
 async def preview_generated_pdf(request: Request, file: UploadFile = File(...)):
-    """
-    Converts the first page of the generated or uploaded PDF into a high-quality base64 PNG thumbnail 
-    for real-time visual review in the frontend dashboard.
-    """
     if not fitz:
         raise HTTPException(status_code=500, detail="PyMuPDF (fitz) library is not installed on the backend.")
     
@@ -632,7 +613,6 @@ async def preview_generated_pdf(request: Request, file: UploadFile = File(...)):
                 pass
 
 
-# Phase 4.2 & 4.3: Export & Download Manager with Full Pipeline Verification
 @app.post("/api/v2/batch-export")
 @limiter.limit("10/minute")
 async def batch_export_books(
@@ -640,7 +620,6 @@ async def batch_export_books(
     book_type: str = Form("quiz"),
     format_size: str = Form("B5"),
     column_count: int = Form(2),
-    # Control Panel Spacing Parameters
     font_size: float = Form(9.0),
     line_spacing: float = Form(13.0),
     question_gap: float = Form(6.0),
@@ -648,22 +627,18 @@ async def batch_export_books(
     column_gap_val: float = Form(10.0),
     footer_bottom_margin: float = Form(20.0),
     option_vertical_gap: float = Form(1.5),
-    # Frontend Toolbar Chapter Heading Customization Parameters
     header_font_size: float = Form(11.0),
     header_bold: bool = Form(True),
     header_italic: bool = Form(False),
     header_alignment: int = Form(1),
     files: list[UploadFile] = File(...)
 ):
-    """
-    Accepts multiple documents, processes each through the canonical & layout ReportLab engine,
-    and bundles them into a single downloadable ZIP package with verified cleanup.
-    """
     batch_tmp_dir = tempfile.mkdtemp()
     zip_output_path = tempfile.NamedTemporaryFile(delete=False, suffix=".zip").name
     
     try:
         generated_pdfs = []
+        pdf_gen = PDFGenerator()
         
         for idx, file in enumerate(files):
             if not file.filename:
@@ -686,7 +661,7 @@ async def batch_export_books(
             pdf_filename = os.path.splitext(file.filename)[0] + f"_typeset_{book_type}.pdf"
             pdf_path = os.path.join(batch_tmp_dir, pdf_filename)
             
-            generate_exampur_book(
+            pdf_gen.generate_pdf(
                 output_filename=pdf_path,
                 book_type=book_type,
                 format_size=format_size,
