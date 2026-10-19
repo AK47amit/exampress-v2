@@ -2,42 +2,36 @@
 <html lang="hi">
 <head>
     <meta charset="UTF-8">
-    <title>{{ book.title }}</title>
+    <title>{{ book.title if book and book.title else 'Exampress Book' }}</title>
     <style>
         @page {
-            size: A4;
+            size: B5;
             margin: 20mm;
         }
         body {
             font-family: 'Noto Sans Devanagari', 'Arial', sans-serif;
             color: #111;
-            line-height: 1.4;
             margin: 0;
             padding: 0;
             background-color: #fff;
         }
         .chapter-title {
-            text-align: center;
-            font-size: 22px;
-            font-weight: bold;
-            margin-bottom: 25px;
+            margin-bottom: 20px;
             border-bottom: 2px solid #333;
-            padding-bottom: 8px;
+            padding-bottom: 6px;
+            page-break-before: always;
         }
-        /* 2-Column Layout Container */
+        .chapter-title:first-of-type {
+            page-break-before: avoid;
+        }
         .container {
-            column-count: 2;
-            column-gap: 20px;
             width: 100%;
         }
         .question-block {
             break-inside: avoid;
-            margin-bottom: 18px;
         }
         .question-text {
-            font-size: 13px;
             font-weight: bold;
-            margin-bottom: 6px;
             text-align: justify;
         }
         .options-list {
@@ -45,28 +39,61 @@
             padding-left: 0;
             list-style: none;
         }
-        .option-item {
-            font-size: 12px;
+        .explanation {
+            color: #475569;
+            margin-top: 2px;
             margin-bottom: 4px;
+        }
+        .answer-key-section {
+            margin-top: 20px;
+            break-inside: avoid;
         }
     </style>
 </head>
-<body>
+<body style="font-size: {{ font_size if font_size else 9.0 }}pt; line-height: {{ line_spacing if line_spacing else 13.0 }}px;">
 
-    <div class="chapter-title">{{ chapter.chapter_title }}</div>
+    <h1 style="text-align: center; margin-bottom: 30px;">{{ book.title if book and book.title else 'Exampress Book' }}</h1>
 
-    <div class="container">
-        {% for block in chapter.blocks %}
-        <div class="question-block">
-            <div class="question-text">{{ block.question_text }}</div>
-            <ul class="options-list">
-                {% for option in block.options %}
-                <li class="option-item">{{ option }}</li>
-                {% endfor %}
-            </ul>
-        </div>
+    {% if book and book.chapters %}
+        {% for chapter in book.chapters %}
+            <div class="chapter-title" style="text-align: {{ header_align_str if header_align_str else 'left' }}; font-size: {{ header_font_size if header_font_size else 16.0 }}pt; font-weight: {{ header_font_weight if header_font_weight else 'bold' }}; font-style: {{ header_font_style if header_font_style else 'normal' }};">
+                {{ loop.index }}. {{ chapter.chapter_title if chapter.chapter_title else 'Chapter' }}
+            </div>
+
+            <div class="container" style="column-count: {{ column_count if column_count else 2 }}; column-gap: {{ column_gap_val if column_gap_val else 10 }}px;">
+                {% if chapter.questions %}
+                    {% for q in chapter.questions %}
+                    <div class="question-block" style="margin-bottom: {{ question_gap if question_gap else 6 }}px;">
+                        <div class="question-text" style="margin-bottom: {{ option_top_gap if option_top_gap else 2 }}px;">
+                            <b>Q.{{ loop.index }}</b> {{ q.question if q.question else '' }}
+                        </div>
+                        {% if q.options %}
+                        <ul class="options-list">
+                            {% for opt in q.options %}
+                            <li class="option-item" style="margin-bottom: {{ option_vertical_gap if option_vertical_gap else 1.5 }}px;">{{ opt }}</li>
+                            {% endfor %}
+                        </ul>
+                        {% endif %}
+                        {% if book_type == "solutions" and q.explanation %}
+                        <div class="explanation" style="font-size: calc({{ font_size if font_size else 9.0 }}pt - 0.5pt);">Exp: {{ q.explanation }}</div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                {% endif %}
+            </div>
+
+            {% if chapter.answer_key %}
+            <div class="answer-key-section">
+                <h3>Answer Key - Chapter {{ loop.index }}</h3>
+                <ul>
+                    {% for ak in chapter.answer_key %}
+                    <li>Q{{ loop.index }}: {{ ak.ans if ak.ans else '' }} {% if ak.exp %} | Exp: {{ ak.exp }}{% endif %}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
         {% endfor %}
-    </div>
+    {% endif %}
 
 </body>
 </html>
