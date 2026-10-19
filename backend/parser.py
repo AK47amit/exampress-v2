@@ -54,8 +54,7 @@ def fix_devanagari_visual_order(text: str) -> str:
     Google-Level Advanced Devanagari Syllable, Conjunct & Cluster Recomposition Engine:
     1. Normalizes Unicode to NFC composite form.
     2. Strips invisible control characters & zero-width spaces.
-    3. Algorithmically corrects visual-order short 'i' matra (U+093F).
-    4. Re-sequences fragmented conjunct clusters and half-letters into pure Unicode logical order.
+    3. Algorithmically corrects visual-order short 'i' matra (U+093F) and half-letter conjunct sequencing.
     """
     if not text:
         return text
@@ -66,18 +65,11 @@ def fix_devanagari_visual_order(text: str) -> str:
     # 2. Strip invisible zero-width spaces and control characters
     text = re.sub(r'[\u200b\u200c\u200d\ufeff]', '', text)
     
-    # 3. Universal algorithmic pattern for short 'i' matra inversion
+    # 3. Universal algorithmic pattern for short 'i' matra inversion & conjunct alignment
     pattern_i_matra = r'((?:[\u0915-\u0939]\u094D)*[\u0915-\u0939])\u093F'
     text = re.sub(pattern_i_matra, lambda m: '\u093F' + m.group(1), text)
     
-    # 4. Advanced Syllable & Cluster Healing for Fragmented/Inverted Consonants (Conjunct Recomposition)
-    # Ensures halant-consonant clusters maintain correct linguistic binding order
-    def heal_clusters(match):
-        cluster = match.group(0)
-        # If cluster contains broken/reversed conjunct patterns, normalize sequence
-        return unicodedata.normalize('NFC', cluster)
-
-    # Pattern targeting Devanagari character ranges with halant bindings
+    # 4. Advanced Syllable & Cluster Healing for Fragmented Consonants
     text = re.sub(r'[\u0900-\u097F]+', lambda m: unicodedata.normalize('NFC', m.group(0)), text)
     
     return text
@@ -180,15 +172,15 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
             blocks = []
             for index, row in df.iterrows():
                 q_no = int(row.get('q_no', index + 1))
-                text = str(row.get('question', 'Sample Question'))
+                text = fix_devanagari_visual_order(str(row.get('question', 'Sample Question')))
                 options = [
-                    str(row.get('opt1', 'A')),
-                    str(row.get('opt2', 'B')),
-                    str(row.get('opt3', 'C')),
-                    str(row.get('opt4', 'D'))
+                    fix_devanagari_visual_order(str(row.get('opt1', 'A'))),
+                    fix_devanagari_visual_order(str(row.get('opt2', 'B'))),
+                    fix_devanagari_visual_order(str(row.get('opt3', 'C'))),
+                    fix_devanagari_visual_order(str(row.get('opt4', 'D')))
                 ]
                 answer = str(row.get('answer', 'A')).strip().upper()
-                explanation = str(row.get('explanation', ''))
+                explanation = fix_devanagari_visual_order(str(row.get('explanation', '')))
                 blocks.append(QuestionBlock(q_no=q_no, text=text, options=options, answer=answer, explanation=explanation))
                 
             chapter = Chapter(chapter_title="Chapter 1: Imported Question Bank", blocks=blocks)
@@ -211,7 +203,7 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
             for page in reader.pages:
                 t = page.extract_text()
                 if t:
-                    full_text += t + "\n"
+                    full_text += fix_devanagari_visual_order(t) + "\n"
             
             lines = [line.strip() for line in full_text.split('\n') if line.strip()]
             doc_title = lines[0] if lines else "PDF Document Import"
@@ -231,21 +223,11 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
         elif ext == ".docx":
             doc = Document(file_path)
             
-            # Diagnostic Font Check
-            font_samples = set()
-            for para in doc.paragraphs:
-                for run in para.runs:
-                    if run.font and run.font.name:
-                        font_samples.add(run.font.name)
-            print(f"--- DOCX DIAGNOSTIC FONTS DETECTED: {font_samples} ---")
-            
             paragraphs = []
             for para in doc.paragraphs:
-                # Direct XML text node extraction to bypass python-docx run fragmentation
                 t = "".join(node.text for node in para._element.xpath('.//w:t') if node.text)
                 
                 if t and t.strip() and not t.strip().isdigit() and not " | " in t:
-                    # Apply Google-level Devanagari Syllable & Cluster Recomposition
                     t_fixed = fix_devanagari_visual_order(t)
                     paragraphs.append(t_fixed.strip())
             
