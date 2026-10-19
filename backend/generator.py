@@ -134,17 +134,16 @@ class PDFGenerator:
                         "--no-sandbox",
                         "--disable-setuid-sandbox",
                         "--disable-dev-shm-usage",
-                        "--disable-gpu"
+                        "--disable-gpu",
+                        "--run-all-compositor-stages-before-draw"
                     ]
                 )
                 page = browser.new_page()
                 
-                # Feed HTML string directly to avoid file:// protocol or path bugs in containers
                 page.set_content(rendered_html, wait_until="domcontentloaded")
                 page.wait_for_timeout(1000)
                 
-                pdf_options = {
-                    "path": output_filename,
+                pdf_args = {
                     "print_background": True,
                     "margin": {
                         "top": f"{top_header_margin}mm", 
@@ -155,13 +154,18 @@ class PDFGenerator:
                 }
 
                 if format_size.upper() == "B5":
-                    pdf_options["width"] = "176mm"
-                    pdf_options["height"] = "250mm"
+                    pdf_args["width"] = "176mm"
+                    pdf_args["height"] = "250mm"
                 else:
-                    pdf_options["format"] = "A4"
+                    pdf_args["format"] = "A4"
 
-                page.pdf(**pdf_options)
+                # Generate PDF as bytes to bypass internal Chromium file writing permission errors
+                pdf_bytes = page.pdf(**pdf_args)
                 browser.close()
+
+            abs_output_path = os.path.abspath(output_filename)
+            with open(abs_output_path, "wb") as f:
+                f.write(pdf_bytes)
 
             return output_filename
 
