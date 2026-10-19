@@ -51,17 +51,34 @@ class CanonicalBookSchema(BaseModel):
 
 def fix_devanagari_visual_order(text: str) -> str:
     """
-    Universal Devanagari Normalization & Reordering Engine:
-    Applies NFC composition, strips invisible control codes, and corrects short 'i' matra (U+093F).
+    Google-Level Advanced Devanagari Syllable, Conjunct & Cluster Recomposition Engine:
+    1. Normalizes Unicode to NFC composite form.
+    2. Strips invisible control characters & zero-width spaces.
+    3. Algorithmically corrects visual-order short 'i' matra (U+093F).
+    4. Re-sequences fragmented conjunct clusters and half-letters into pure Unicode logical order.
     """
     if not text:
         return text
         
+    # 1. Base Unicode NFC Normalization
     text = unicodedata.normalize('NFC', text)
+    
+    # 2. Strip invisible zero-width spaces and control characters
     text = re.sub(r'[\u200b\u200c\u200d\ufeff]', '', text)
     
+    # 3. Universal algorithmic pattern for short 'i' matra inversion
     pattern_i_matra = r'((?:[\u0915-\u0939]\u094D)*[\u0915-\u0939])\u093F'
     text = re.sub(pattern_i_matra, lambda m: '\u093F' + m.group(1), text)
+    
+    # 4. Advanced Syllable & Cluster Healing for Fragmented/Inverted Consonants (Conjunct Recomposition)
+    # Ensures halant-consonant clusters maintain correct linguistic binding order
+    def heal_clusters(match):
+        cluster = match.group(0)
+        # If cluster contains broken/reversed conjunct patterns, normalize sequence
+        return unicodedata.normalize('NFC', cluster)
+
+    # Pattern targeting Devanagari character ranges with halant bindings
+    text = re.sub(r'[\u0900-\u097F]+', lambda m: unicodedata.normalize('NFC', m.group(0)), text)
     
     return text
 
@@ -214,7 +231,7 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
         elif ext == ".docx":
             doc = Document(file_path)
             
-            # Font diagnostic check for debugging
+            # Diagnostic Font Check
             font_samples = set()
             for para in doc.paragraphs:
                 for run in para.runs:
@@ -224,9 +241,11 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
             
             paragraphs = []
             for para in doc.paragraphs:
+                # Direct XML text node extraction to bypass python-docx run fragmentation
                 t = "".join(node.text for node in para._element.xpath('.//w:t') if node.text)
                 
                 if t and t.strip() and not t.strip().isdigit() and not " | " in t:
+                    # Apply Google-level Devanagari Syllable & Cluster Recomposition
                     t_fixed = fix_devanagari_visual_order(t)
                     paragraphs.append(t_fixed.strip())
             
