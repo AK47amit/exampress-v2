@@ -2,14 +2,13 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# Set PYTHONPATH so Python can locate modules inside the backend folder
 ENV PYTHONPATH=/app/backend
 
-# Install all required system libraries for Chromium & Chrome CLI
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     wget \
     gnupg \
+    chromium \
     libglib2.0-0 \
     libnss3 \
     libnspr4 \
@@ -42,9 +41,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-RUN playwright install --with-deps chromium
 
 COPY . .
 

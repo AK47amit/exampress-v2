@@ -66,7 +66,7 @@ class PDFGenerator:
                         
                         formatted_questions.append({
                             "question": q_text,
-                            "options": options,
+                        "options": options,
                             "answer": ans_val,
                             "explanation": exp_val
                         })
@@ -128,15 +128,15 @@ class PDFGenerator:
             )
 
             with sync_playwright() as p:
+                # Use system installed chromium binary to bypass headless-shell protocol errors
                 browser = p.chromium.launch(
+                    executable_path="/usr/bin/chromium",
                     headless=True,
                     args=[
                         "--no-sandbox",
                         "--disable-setuid-sandbox",
                         "--disable-dev-shm-usage",
                         "--disable-gpu",
-                        "--disable-features=IsolateOrigins,site-per-process",
-                        "--disable-site-isolation-trials",
                         "--hide-scrollbars",
                         "--disable-breakpad"
                     ]
