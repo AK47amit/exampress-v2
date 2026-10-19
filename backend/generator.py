@@ -127,10 +127,6 @@ class PDFGenerator:
                 header_align_str=header_align_str
             )
 
-            temp_html_path = os.path.join(self.template_dir, f"temp_output_{os.getpid()}.html")
-            with open(temp_html_path, "w", encoding="utf-8") as f:
-                f.write(rendered_html)
-
             with sync_playwright() as p:
                 browser = p.chromium.launch(
                     headless=True,
@@ -143,8 +139,8 @@ class PDFGenerator:
                 )
                 page = browser.new_page()
                 
-                # Safely load HTML with domcontentloaded and stability wait
-                page.goto(f"file://{os.path.abspath(temp_html_path)}", wait_until="domcontentloaded")
+                # Feed HTML string directly to avoid file:// protocol or path bugs in containers
+                page.set_content(rendered_html, wait_until="domcontentloaded")
                 page.wait_for_timeout(1000)
                 
                 pdf_options = {
@@ -166,12 +162,6 @@ class PDFGenerator:
 
                 page.pdf(**pdf_options)
                 browser.close()
-                
-            if os.path.exists(temp_html_path):
-                try:
-                    os.remove(temp_html_path)
-                except Exception:
-                    pass
 
             return output_filename
 
