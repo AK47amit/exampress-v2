@@ -1,6 +1,5 @@
 import os
 import subprocess
-import sys
 from jinja2 import Environment, FileSystemLoader
 
 class PDFGenerator:
@@ -125,64 +124,37 @@ class PDFGenerator:
             header_align_str=header_align_str
         )
 
-        temp_html_path = os.path.abspath(os.path.join(self.template_dir, f"temp_output_{os.getpid()}.html"))
+        temp_html_path = os.path.abspath(os.path.join(self.template_dir, f"temp_book_{os.getpid()}.html"))
         with open(temp_html_path, "w", encoding="utf-8") as f:
             f.write(rendered_html)
 
         abs_output_path = os.path.abspath(output_filename)
-        page_format = "B5" if format_size.upper() == "B5" else "A4"
 
-        # Write a standalone isolated python script to execute Playwright cleanly without thread/loop conflicts
-        runner_script = f"""
-import asyncio
-from playwright.async_api import async_playwright
+        # Find chrome binary path installed by Playwright
+        chrome_bin = "/root/.cache/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-linux64/chrome-headless-shell"
+        if not os.path.exists(chrome_bin):
+            chrome_bin = "chromium"  # fallback
 
-async def render():
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=True,
-            args=[
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-gpu"
-            ]
-        )
-        page = await browser.new_page()
-        await page.goto("file://{temp_html_path}")
-        await page.pdf(
-            path="{abs_output_path}",
-            format="{page_format}",
-            print_background=True,
-            margin={{
-                "top": "{top_header_margin}mm",
-                "bottom": "{footer_bottom_margin}mm",
-                "left": "20mm",
-                "right": "20mm"
-            }}
-        )
-        await browser.close()
-
-asyncio.run(render())
-"""
-        runner_script_path = os.path.abspath(os.path.join(self.template_dir, f"runner_{os.getpid()}.py"))
-        with open(runner_script_path, "w", encoding="utf-8") as f:
-            f.write(runner_script)
+        # Direct Headless Chrome CLI execution for robust PDF printing without Python wrapper crashes
+        cmd = [
+            chrome_bin,
+            "--headless",
+            "--no-sandbox",
+            "--disable-gpu",
+            "--disable-dev-shm-usage",
+            f"--print-to-pdf={abs_output_path}",
+            f"file://{temp_html_path}"
+        ]
 
         try:
-            # Execute the isolated playwright script in a separate OS process
-            result = subprocess.run(
-                [sys.executable, runner_script_path],
-                check=True,
-                capture_output=True,
-                text=True
-            )
+            result = subprocess.run(cmd, check=True, capture_output=True, text=True)
         except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"Playwright Subprocess Failed: {e.stderr}")
+            raise RuntimeError(f"Chrome CLI PDF Generation Failed: {e.stderr}")
         finally:
             if os.path.exists(temp_html_path):
-                os.remove(temp_html_path)
-            if os.path.exists(runner_script_path):
-                os.remove(runner_script_path)
+                try:
+                    os.remove(temp_html_path)
+                except Exception:
+                    pass
 
         return output_filename
