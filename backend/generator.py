@@ -1,4 +1,5 @@
 import os
+import asyncio
 from jinja2 import Environment, FileSystemLoader
 from playwright.sync_api import sync_playwright
 
@@ -7,31 +8,26 @@ class PDFGenerator:
         self.template_dir = template_dir
         self.env = Environment(loader=FileSystemLoader(template_dir))
 
-    def generate_pdf(
+    def _sync_generate(
         self,
-        output_filename="exampress_final_book.pdf",
-        book_type="quiz",
-        format_size="B5",
-        book_data=None,
-        canonical_data=None,
-        column_count=2,
-        font_size=9.0,
-        line_spacing=13.0,
-        question_gap=6.0,
-        option_top_gap=2.0,
-        column_gap_val=10.0,
-        footer_bottom_margin=22.0,
-        top_header_margin=15.0,
-        option_vertical_gap=1.5,
-        header_font_size=16.0,
-        header_bold=True,
-        header_italic=False,
-        header_alignment=0
+        output_filename,
+        book_type,
+        format_size,
+        canonical_data,
+        column_count,
+        font_size,
+        line_spacing,
+        question_gap,
+        option_top_gap,
+        column_gap_val,
+        footer_bottom_margin,
+        top_header_margin,
+        option_vertical_gap,
+        header_font_size,
+        header_bold,
+        header_italic,
+        header_alignment
     ):
-        # Fallback normalization if book_data was directly provided instead of canonical_data
-        if not canonical_data and book_data:
-            canonical_data = book_data
-
         processed_chapters = []
 
         if canonical_data and isinstance(canonical_data, dict):
@@ -41,7 +37,6 @@ class PDFGenerator:
             
             raw_chapters = canonical_data.get("chapters", [])
             
-            # If canonical_data has flat blocks or questions instead of chapters list
             if not raw_chapters:
                 if "blocks" in canonical_data:
                     raw_chapters = [{"chapter_title": "Main Chapter", "blocks": canonical_data["blocks"]}]
@@ -58,7 +53,6 @@ class PDFGenerator:
                     if not isinstance(block, dict):
                         continue
                     
-                    # Handle multiple parser schemas safely
                     q_text = block.get("text", "") or block.get("question", "")
                     ans_val = block.get("answer", "A")
                     exp_val = block.get("explanation", "").strip()
@@ -86,7 +80,6 @@ class PDFGenerator:
                         "answer_key": chap_answer_key
                     })
 
-        # Absolute safe fallback if everything else is empty
         if not processed_chapters:
             processed_chapters = [
                 {
@@ -159,3 +152,46 @@ class PDFGenerator:
             os.remove(temp_html_path)
 
         return output_filename
+
+    async def generate_pdf(
+        self,
+        output_filename="exampress_final_book.pdf",
+        book_type="quiz",
+        format_size="B5",
+        book_data=None,
+        canonical_data=None,
+        column_count=2,
+        font_size=9.0,
+        line_spacing=13.0,
+        question_gap=6.0,
+        option_top_gap=2.0,
+        column_gap_val=10.0,
+        footer_bottom_margin=22.0,
+        top_header_margin=15.0,
+        option_vertical_gap=1.5,
+        header_font_size=16.0,
+        header_bold=True,
+        header_italic=False,
+        header_alignment=0
+    ):
+        # Run synchronous Playwright safely inside a separate thread to prevent asyncio loop crashes
+        return await asyncio.to_thread(
+            self._sync_generate,
+            output_filename=output_filename,
+            book_type=book_type,
+            format_size=format_size,
+            canonical_data=canonical_data,
+            column_count=column_count,
+            font_size=font_size,
+            line_spacing=line_spacing,
+            question_gap=question_gap,
+            option_top_gap=option_top_gap,
+            column_gap_val=column_gap_val,
+            footer_bottom_margin=footer_bottom_margin,
+            top_header_margin=top_header_margin,
+            option_vertical_gap=option_vertical_gap,
+            header_font_size=header_font_size,
+            header_bold=header_bold,
+            header_italic=header_italic,
+            header_alignment=header_alignment
+        )
