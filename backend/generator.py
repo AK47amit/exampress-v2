@@ -133,7 +133,15 @@ class PDFGenerator:
                 f.write(rendered_html)
 
             with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
+                browser = p.chromium.launch(
+                    headless=True,
+                    args=[
+                        "--no-sandbox",
+                        "--disable-setuid-sandbox",
+                        "--disable-dev-shm-usage",
+                        "--disable-gpu"
+                    ]
+                )
                 page = browser.new_page()
                 
                 page.goto(f"file://{os.path.abspath(temp_html_path)}")
