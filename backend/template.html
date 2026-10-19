@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ book.title }}</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 20mm;
+        }
+        body {
+            font-family: 'Noto Sans Devanagari', 'Arial', sans-serif;
+            color: #111;
+            line-height: 1.4;
+            margin: 0;
+            padding: 0;
+            background-color: #fff;
+        }
+        .chapter-title {
+            text-align: center;
+            font-size: 22px;
+            font-weight: bold;
+            margin-bottom: 25px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 8px;
+        }
+        /* 2-Column Layout Container */
+        .container {
+            column-count: 2;
+            column-gap: 20px;
+            width: 100%;
+        }
+        .question-block {
+            break-inside: avoid;
+            margin-bottom: 18px;
+        }
+        .question-text {
+            font-size: 13px;
+            font-weight: bold;
+            margin-bottom: 6px;
+            text-align: justify;
+        }
+        .options-list {
+            margin-left: 0;
+            padding-left: 0;
+            list-style: none;
+        }
+        .option-item {
+            font-size: 12px;
+            margin-bottom: 4px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="chapter-title">{{ chapter.chapter_title }}</div>
+
+    <div class="container">
+        {% for block in chapter.blocks %}
+        <div class="question-block">
+            <div class="question-text">{{ block.question_text }}</div>
+            <ul class="options-list">
+                {% for option in block.options %}
+                <li class="option-item">{{ option }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endfor %}
+    </div>
+
+</body>
+</html>

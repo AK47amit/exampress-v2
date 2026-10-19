@@ -2,12 +2,17 @@ import os
 import zipfile
 import tempfile
 import re
+import shutil
 from parser import parse_uploaded_file
 
 def natural_sort_key(s):
     return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]
 
 def extract_and_parse_archive(archive_path: str, book_type: str, format_size: str, column_count: int = 2) -> dict:
+    """
+    Extracts uploaded zip archives securely, validates file constraints, sorts files naturally,
+    and consolidates parsed chapters into a single master canonical book schema for Playwright PDF rendering.
+    """
     extracted_dir = tempfile.mkdtemp()
     
     try:
@@ -64,6 +69,7 @@ def extract_and_parse_archive(archive_path: str, book_type: str, format_size: st
                     if not display_title:
                         display_title = base_clean_name if base_clean_name else "Practice Chapter"
 
+                    # Parses inner file into canonical data structure compatible with Playwright generator
                     parsed_book = parse_uploaded_file(
                         file_path=file_path,
                         file_extension=ext,
@@ -105,7 +111,6 @@ def extract_and_parse_archive(archive_path: str, book_type: str, format_size: st
 
     finally:
         if os.path.exists(extracted_dir):
-            import shutil
             try:
                 shutil.rmtree(extracted_dir)
             except Exception:
