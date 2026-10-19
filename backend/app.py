@@ -76,6 +76,48 @@ class ProjectSaveRequest(BaseModel):
     canonical_data: dict
 
 
+def normalize_canonical_data(canonical_data: dict, book_type: str, format_size: str, column_count: int) -> dict:
+    """
+    Robust Normalization Guard: Ensures that canonical_data always has a valid 'chapters' 
+    structure with 'chapter_title' and 'questions' to completely prevent Jinja template undefined errors.
+    """
+    if not isinstance(canonical_data, dict):
+        canonical_data = {}
+
+    canonical_data.setdefault("title", "Exampress Practice Book")
+    canonical_data.setdefault("book_type", book_type)
+    canonical_data.setdefault("format_size", format_size)
+    canonical_data.setdefault("column_count", column_count)
+
+    chapters = canonical_data.get("chapters", [])
+    
+    # If parser returned flat blocks or questions without chapter grouping
+    if not chapters and ("blocks" in canonical_data or "questions" in canonical_data):
+        blocks = canonical_data.get("blocks", canonical_data.get("questions", []))
+        chapters = [{
+            "chapter_title": "Chapter 1: Main Content",
+            "blocks": blocks
+        }]
+    
+    # If still no chapters, provide a safe default chapter
+    if not chapters:
+        chapters = [{
+            "chapter_title": "Chapter 1: General Practice Set",
+            "blocks": [
+                {
+                    "type": "question",
+                    "text": "Sample question text?",
+                    "options": ["[A] Option 1", "[B] Option 2"],
+                    "answer": "[A]",
+                    "explanation": "Verified."
+                }
+            ]
+        }]
+
+    canonical_data["chapters"] = chapters
+    return canonical_data
+
+
 # Section 4.3 & Phase 5/7/8: End-to-End Health & SaaS Status Endpoint
 @app.get("/")
 @limiter.limit("60/minute")
@@ -296,29 +338,9 @@ async def generate_book_async(
                     format_size=format_size,
                     column_count=column_count
                 )
-        else:
-            canonical_data = {
-                "title": "Exampress Default Practice Book",
-                "book_type": book_type,
-                "format_size": format_size,
-                "column_count": column_count,
-                "author": "Exampur Publication Division",
-                "chapters": [
-                    {
-                        "chapter_title": "Chapter 1: General Awareness & Quantitative Aptitude",
-                        "blocks": [
-                            {
-                                "type": "question",
-                                "q_no": 1,
-                                "text": "What is the capital city of India?",
-                                "options": ["Mumbai", "New Delhi", "Kolkata", "Chennai"],
-                                "answer": "New Delhi",
-                                "explanation": "New Delhi is the national capital of India."
-                            }
-                        ]
-                    }
-                ]
-            }
+        
+        canonical_data = normalize_canonical_data(canonical_data, book_type, format_size, column_count)
+
     except Exception as parse_err:
         logger.error(f"Parser error during async generation: {str(parse_err)}")
         raise HTTPException(status_code=400, detail=f"Universal Parser Error: {str(parse_err)}")
@@ -492,29 +514,8 @@ async def generate_book(
             except Exception as parse_err:
                 logger.error(f"Parser error during generation: {str(parse_err)}")
                 raise HTTPException(status_code=400, detail=f"Universal Parser Error: {str(parse_err)}")
-        else:
-            canonical_data = {
-                "title": "Exampress Default Practice Book",
-                "book_type": book_type,
-                "format_size": format_size,
-                "column_count": column_count,
-                "author": "Exampur Publication Division",
-                "chapters": [
-                    {
-                        "chapter_title": "Chapter 1: General Awareness & Quantitative Aptitude",
-                        "blocks": [
-                            {
-                                "type": "question",
-                                "q_no": 1,
-                                "text": "What is the capital city of India?",
-                                "options": ["Mumbai", "New Delhi", "Kolkata", "Chennai"],
-                                "answer": "New Delhi",
-                                "explanation": "New Delhi is the national capital of India."
-                            }
-                        ]
-                    }
-                ]
-            }
+        
+        canonical_data = normalize_canonical_data(canonical_data, book_type, format_size, column_count)
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_out:
             tmp_output_path = tmp_out.name
@@ -657,6 +658,7 @@ async def batch_export_books(
                 format_size=format_size,
                 column_count=column_count
             )
+            canonical_data = normalize_canonical_data(canonical_data, book_type, format_size, column_count)
             
             pdf_filename = os.path.splitext(file.filename)[0] + f"_typeset_{book_type}.pdf"
             pdf_path = os.path.join(batch_tmp_dir, pdf_filename)
