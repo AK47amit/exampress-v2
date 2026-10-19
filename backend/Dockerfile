@@ -2,12 +2,9 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# Install all required system libraries for Playwright & Chromium
+# Install complete system dependencies required for Playwright Chromium on Debian slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    libffi-dev \
-    libjpeg-dev \
-    zlib1g-dev \
     wget \
     gnupg \
     libglib2.0-0 \
@@ -24,6 +21,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libasound2 \
     libpango-1.0-0 \
     libcairo2 \
+    libx11-xcb1 \
+    libxcomposite1 \
+    libxcursor1 \
+    libxdamage1 \
+    libxext6 \
+    libxfixes3 \
+    libxi6 \
+    libxrandr2 \
+    libxrender1 \
+    libxtst6 \
+    libxcb1 \
+    libx11-6 \
     libpangoft2-1.0-0 \
     libharfbuzz0b \
     && rm -rf /var/lib/apt/lists/*
@@ -31,7 +40,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Playwright along with all required system dependencies and browser binaries
+# Force Playwright to install browser binaries and dependencies into a persistent path
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN playwright install --with-deps chromium
 
 COPY . .
