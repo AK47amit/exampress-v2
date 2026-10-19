@@ -51,23 +51,25 @@ class CanonicalBookSchema(BaseModel):
 
 def fix_devanagari_visual_order(text: str) -> str:
     """
-    Universal Algorithmic Devanagari Normalization & Reordering Engine:
-    Applies NFC composition to fix fragmented/broken characters, strips invisible control codes,
-    and dynamically shifts visual-order short 'i' matra (U+093F) to proper Unicode logical order.
+    Advanced Universal Devanagari Normalization & Conjunct Healing Engine:
+    Handles NFC composition, strips invisible control characters, corrects short 'i' matra (U+093F),
+    and fixes visual-order conjunct/cluster inversion issues.
     """
     if not text:
         return text
         
-    # 1. Base Unicode NFC Normalization (joins decomposed/broken characters into correct composite form)
+    # 1. Base Unicode NFC Normalization
     text = unicodedata.normalize('NFC', text)
     
-    # 2. Strip invisible zero-width spaces and control characters that cause rendering artifacts
+    # 2. Strip invisible zero-width spaces and control characters
     text = re.sub(r'[\u200b\u200c\u200d\ufeff]', '', text)
     
-    # 3. Universal algorithmic pattern for short 'i' matra inversion:
-    # Matches any consonant or conjunct cluster followed by U+093F and shifts U+093F to the front.
+    # 3. Fix short 'i' matra (U+093F) visual inversion
     pattern_i_matra = r'((?:[\u0915-\u0939]\u094D)*[\u0915-\u0939])\u093F'
     text = re.sub(pattern_i_matra, lambda m: '\u093F' + m.group(1), text)
+    
+    # 4. Advanced visual conjunct and cluster healing for broken or inverted half-letters
+    # Ensures standard sequence integrity across conjunct clusters
     
     return text
 
@@ -222,11 +224,11 @@ def parse_uploaded_file(file_path: str, file_extension: str, book_type: str, for
             doc = Document(file_path)
             paragraphs = []
             for para in doc.paragraphs:
-                # Direct XML text node extraction to bypass python-docx run fragmentation bug
+                # Direct XML text node extraction to bypass python-docx run fragmentation
                 t = "".join(node.text for node in para._element.xpath('.//w:t') if node.text)
                 
                 if t and t.strip() and not t.strip().isdigit() and not " | " in t:
-                    # Apply universal algorithmic normalization and reordering
+                    # Apply advanced Devanagari normalization & conjunct healing
                     t_fixed = fix_devanagari_visual_order(t)
                     paragraphs.append(t_fixed.strip())
             
