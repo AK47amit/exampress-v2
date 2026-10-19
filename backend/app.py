@@ -4,6 +4,8 @@ import tempfile
 import base64
 import zipfile
 import uuid
+import subprocess
+import sys
 from datetime import timedelta
 from fastapi import FastAPI, UploadFile, File, Form, Response, HTTPException, Depends, status, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -74,6 +76,20 @@ class ProjectSaveRequest(BaseModel):
     format_size: str
     column_count: int
     canonical_data: dict
+
+
+@app.on_event("startup")
+def startup_event():
+    """
+    Ensure Playwright chromium browser is automatically installed on container startup 
+    to permanently prevent missing executable errors in production.
+    """
+    try:
+        logger.info("Startup Event: Ensuring Playwright Chromium browser is installed...")
+        subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
+        logger.info("Playwright Chromium browser verified and ready.")
+    except Exception as e:
+        logger.error(f"Failed to auto-install Playwright browser on startup: {str(e)}")
 
 
 def normalize_canonical_data(canonical_data: dict, book_type: str, format_size: str, column_count: int) -> dict:
