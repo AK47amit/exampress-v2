@@ -28,79 +28,93 @@ class PDFGenerator:
         header_italic=False,
         header_alignment=0
     ):
-        """
-        Generates a high-precision, Google-level flawless Devanagari PDF using Playwright and Jinja2 templates,
-        preserving all frontend toolbar parameters and canonical book structures.
-        """
-        # 1. Process Canonical Data if provided (similar to your previous parsing logic)
-        if canonical_data:
+        # Fallback normalization if book_data was directly provided instead of canonical_data
+        if not canonical_data and book_data:
+            canonical_data = book_data
+
+        processed_chapters = []
+
+        if canonical_data and isinstance(canonical_data, dict):
             column_count = int(canonical_data.get("column_count", column_count))
             format_size = canonical_data.get("format_size", format_size)
             book_type = canonical_data.get("book_type", book_type)
             
-            book_data = {
-                "title": canonical_data.get("title", "Exampress Practice Book"),
-                "chapters": []
-            }
+            raw_chapters = canonical_data.get("chapters", [])
             
-            for chap in canonical_data.get("chapters", []):
+            # If canonical_data has flat blocks or questions instead of chapters list
+            if not raw_chapters:
+                if "blocks" in canonical_data:
+                    raw_chapters = [{"chapter_title": "Main Chapter", "blocks": canonical_data["blocks"]}]
+                elif "questions" in canonical_data:
+                    raw_chapters = [{"chapter_title": "Main Chapter", "blocks": canonical_data["questions"]}]
+
+            for chap in raw_chapters:
                 formatted_questions = []
                 chap_answer_key = []
                 
-                for block in chap.get("blocks", []):
-                    if block.get("type") == "question":
-                        ans_val = block.get("answer", "A")
-                        exp_val = block.get("explanation", "").strip()
-                        if not exp_val or "auto-generated" in exp_val.lower():
-                            exp_val = "Verified by editorial board."
-                        
-                        formatted_questions.append({
-                            "question": block.get("text", ""),
-                            "options": block.get("options", []),
-                            "answer": ans_val,
-                            "explanation": exp_val
-                        })
-                        
-                        chap_answer_key.append({
-                            "ans": ans_val,
-                            "exp": exp_val
-                        })
-                        
-                book_data["chapters"].append({
-                    "chapter_title": chap.get("chapter_title", "Chapter"),
-                    "questions": formatted_questions,
-                    "answer_key": chap_answer_key
-                })
+                blocks = chap.get("blocks", chap.get("questions", []))
+                
+                for block in blocks:
+                    if not isinstance(block, dict):
+                        continue
+                    
+                    # Handle multiple parser schemas safely
+                    q_text = block.get("text", "") or block.get("question", "")
+                    ans_val = block.get("answer", "A")
+                    exp_val = block.get("explanation", "").strip()
+                    if not exp_val or "auto-generated" in exp_val.lower():
+                        exp_val = "Verified by editorial board."
+                    
+                    options = block.get("options", [])
+                    
+                    formatted_questions.append({
+                        "question": q_text,
+                        "options": options,
+                        "answer": ans_val,
+                        "explanation": exp_val
+                    })
+                    
+                    chap_answer_key.append({
+                        "ans": ans_val,
+                        "exp": exp_val
+                    })
+                
+                if formatted_questions:
+                    processed_chapters.append({
+                        "chapter_title": chap.get("chapter_title", "Chapter"),
+                        "questions": formatted_questions,
+                        "answer_key": chap_answer_key
+                    })
 
-        if not book_data or not book_data.get("chapters"):
-            book_data = {
-                "title": "Exampress General Studies Masterclass",
-                "chapters": [
-                    {
-                        "chapter_title": "General Practice Set",
-                        "questions": [
-                            {
-                                "question": "Sample question text?",
-                                "options": ["[A] Option 1", "[B] Option 2"],
-                                "answer": "[A]",
-                                "explanation": "Verified."
-                            }
-                        ],
-                        "answer_key": [{"ans": "[A]", "exp": "Verified."}]
-                    }
-                ]
-            }
+        # Absolute safe fallback if everything else is empty
+        if not processed_chapters:
+            processed_chapters = [
+                {
+                    "chapter_title": "General Practice Set",
+                    "questions": [
+                        {
+                            "question": "Sample question text?",
+                            "options": ["[A] Option 1", "[B] Option 2"],
+                            "answer": "[A]",
+                            "explanation": "Verified."
+                        }
+                    ],
+                    "answer_key": [{"ans": "[A]", "exp": "Verified."}]
+                }
+            ]
 
-        # Alignment mapping for header
+        book_data = {
+            "title": canonical_data.get("title", "Exampress Practice Book") if canonical_data else "Exampress Practice Book",
+            "chapters": processed_chapters
+        }
+
         align_map = {0: "left", 1: "center", 2: "right"}
         header_align_str = align_map.get(header_alignment, "left")
         header_font_weight = "bold" if header_bold else "normal"
         header_font_style = "italic" if header_italic else "normal"
 
-        # 2. Load and render HTML template via Jinja2
         template = self.env.get_template("template.html")
         
-        # Pass all styling and layout configuration variables to template
         rendered_html = template.render(
             book=book_data,
             column_count=column_count,
@@ -121,14 +135,11 @@ class PDFGenerator:
         with open(temp_html_path, "w", encoding="utf-8") as f:
             f.write(rendered_html)
 
-        # 3. Launch Playwright Headless Chromium to generate high-fidelity PDF
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
             
             page.goto(f"file://{os.path.abspath(temp_html_path)}")
-            
-            # Determine page dimensions based on format size
             page_format = "B5" if format_size.upper() == "B5" else "A4"
             
             page.pdf(
@@ -142,7 +153,6 @@ class PDFGenerator:
                     "right": "20mm"
                 }
             )
-            
             browser.close()
             
         if os.path.exists(temp_html_path):
