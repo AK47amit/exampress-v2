@@ -1,5 +1,5 @@
 import os
-import asyncio
+import concurrent.futures
 from jinja2 import Environment, FileSystemLoader
 from playwright.sync_api import sync_playwright
 
@@ -8,152 +8,7 @@ class PDFGenerator:
         self.template_dir = template_dir
         self.env = Environment(loader=FileSystemLoader(template_dir))
 
-    def _sync_generate(
-        self,
-        output_filename,
-        book_type,
-        format_size,
-        canonical_data,
-        column_count,
-        font_size,
-        line_spacing,
-        question_gap,
-        option_top_gap,
-        column_gap_val,
-        footer_bottom_margin,
-        top_header_margin,
-        option_vertical_gap,
-        header_font_size,
-        header_bold,
-        header_italic,
-        header_alignment
-    ):
-        processed_chapters = []
-
-        if canonical_data and isinstance(canonical_data, dict):
-            column_count = int(canonical_data.get("column_count", column_count))
-            format_size = canonical_data.get("format_size", format_size)
-            book_type = canonical_data.get("book_type", book_type)
-            
-            raw_chapters = canonical_data.get("chapters", [])
-            
-            if not raw_chapters:
-                if "blocks" in canonical_data:
-                    raw_chapters = [{"chapter_title": "Main Chapter", "blocks": canonical_data["blocks"]}]
-                elif "questions" in canonical_data:
-                    raw_chapters = [{"chapter_title": "Main Chapter", "blocks": canonical_data["questions"]}]
-
-            for chap in raw_chapters:
-                formatted_questions = []
-                chap_answer_key = []
-                
-                blocks = chap.get("blocks", chap.get("questions", []))
-                
-                for block in blocks:
-                    if not isinstance(block, dict):
-                        continue
-                    
-                    q_text = block.get("text", "") or block.get("question", "")
-                    ans_val = block.get("answer", "A")
-                    exp_val = block.get("explanation", "").strip()
-                    if not exp_val or "auto-generated" in exp_val.lower():
-                        exp_val = "Verified by editorial board."
-                    
-                    options = block.get("options", [])
-                    
-                    formatted_questions.append({
-                        "question": q_text,
-                        "options": options,
-                        "answer": ans_val,
-                        "explanation": exp_val
-                    })
-                    
-                    chap_answer_key.append({
-                        "ans": ans_val,
-                        "exp": exp_val
-                    })
-                
-                if formatted_questions:
-                    processed_chapters.append({
-                        "chapter_title": chap.get("chapter_title", "Chapter"),
-                        "questions": formatted_questions,
-                        "answer_key": chap_answer_key
-                    })
-
-        if not processed_chapters:
-            processed_chapters = [
-                {
-                    "chapter_title": "General Practice Set",
-                    "questions": [
-                        {
-                            "question": "Sample question text?",
-                            "options": ["[A] Option 1", "[B] Option 2"],
-                            "answer": "[A]",
-                            "explanation": "Verified."
-                        }
-                    ],
-                    "answer_key": [{"ans": "[A]", "exp": "Verified."}]
-                }
-            ]
-
-        book_data = {
-            "title": canonical_data.get("title", "Exampress Practice Book") if canonical_data else "Exampress Practice Book",
-            "chapters": processed_chapters
-        }
-
-        align_map = {0: "left", 1: "center", 2: "right"}
-        header_align_str = align_map.get(header_alignment, "left")
-        header_font_weight = "bold" if header_bold else "normal"
-        header_font_style = "italic" if header_italic else "normal"
-
-        template = self.env.get_template("template.html")
-        
-        rendered_html = template.render(
-            book=book_data,
-            column_count=column_count,
-            format_size=format_size,
-            book_type=book_type,
-            font_size=font_size,
-            line_spacing=line_spacing,
-            question_gap=question_gap,
-            option_top_gap=option_top_gap,
-            column_gap_val=column_gap_val,
-            header_font_size=header_font_size,
-            header_font_weight=header_font_weight,
-            header_font_style=header_font_style,
-            header_align_str=header_align_str
-        )
-
-        temp_html_path = os.path.join(self.template_dir, "temp_output.html")
-        with open(temp_html_path, "w", encoding="utf-8") as f:
-            f.write(rendered_html)
-
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
-            
-            page.goto(f"file://{os.path.abspath(temp_html_path)}")
-            page_format = "B5" if format_size.upper() == "B5" else "A4"
-            
-            page.pdf(
-                path=output_filename,
-                format=page_format,
-                print_background=True,
-                margin={
-                    "top": f"{top_header_margin}mm", 
-                    "bottom": f"{footer_bottom_margin}mm", 
-                    "left": "20mm", 
-                    "right": "20mm"
-                }
-            )
-            browser.close()
-            
-        if os.path.exists(temp_html_path):
-            os.remove(temp_html_path)
-
-        return output_filename
-
-    async def generate_pdf(
+    def generate_pdf(
         self,
         output_filename="exampress_final_book.pdf",
         book_type="quiz",
@@ -174,24 +29,135 @@ class PDFGenerator:
         header_italic=False,
         header_alignment=0
     ):
-        # Run synchronous Playwright safely inside a separate thread to prevent asyncio loop crashes
-        return await asyncio.to_thread(
-            self._sync_generate,
-            output_filename=output_filename,
-            book_type=book_type,
-            format_size=format_size,
-            canonical_data=canonical_data,
-            column_count=column_count,
-            font_size=font_size,
-            line_spacing=line_spacing,
-            question_gap=question_gap,
-            option_top_gap=option_top_gap,
-            column_gap_val=column_gap_val,
-            footer_bottom_margin=footer_bottom_margin,
-            top_header_margin=top_header_margin,
-            option_vertical_gap=option_vertical_gap,
-            header_font_size=header_font_size,
-            header_bold=header_bold,
-            header_italic=header_italic,
-            header_alignment=header_alignment
-        )
+        # Helper function to run inside a separate thread to avoid FastAPI event loop conflicts
+        def _run_playwright_render():
+            processed_chapters = []
+
+            if canonical_data and isinstance(canonical_data, dict):
+                nonlocal column_count, format_size, book_type
+                column_count = int(canonical_data.get("column_count", column_count))
+                format_size = canonical_data.get("format_size", format_size)
+                book_type = canonical_data.get("book_type", book_type)
+                
+                raw_chapters = canonical_data.get("chapters", [])
+                
+                if not raw_chapters:
+                    if "blocks" in canonical_data:
+                        raw_chapters = [{"chapter_title": "Main Chapter", "blocks": canonical_data["blocks"]}]
+                    elif "questions" in canonical_data:
+                        raw_chapters = [{"chapter_title": "Main Chapter", "blocks": canonical_data["questions"]}]
+
+                for chap in raw_chapters:
+                    formatted_questions = []
+                    chap_answer_key = []
+                    
+                    blocks = chap.get("blocks", chap.get("questions", []))
+                    
+                    for block in blocks:
+                        if not isinstance(block, dict):
+                            continue
+                        
+                        q_text = block.get("text", "") or block.get("question", "")
+                        ans_val = block.get("answer", "A")
+                        exp_val = block.get("explanation", "").strip()
+                        if not exp_val or "auto-generated" in exp_val.lower():
+                            exp_val = "Verified by editorial board."
+                        
+                        options = block.get("options", [])
+                        
+                        formatted_questions.append({
+                            "question": q_text,
+                            "options": options,
+                            "answer": ans_val,
+                            "explanation": exp_val
+                        })
+                        
+                        chap_answer_key.append({
+                            "ans": ans_val,
+                            "exp": exp_val
+                        })
+                    
+                    if formatted_questions:
+                        processed_chapters.append({
+                            "chapter_title": chap.get("chapter_title", "Chapter"),
+                            "questions": formatted_questions,
+                            "answer_key": chap_answer_key
+                        })
+
+            if not processed_chapters:
+                processed_chapters = [
+                    {
+                        "chapter_title": "General Practice Set",
+                        "questions": [
+                            {
+                                "question": "Sample question text?",
+                                "options": ["[A] Option 1", "[B] Option 2"],
+                                "answer": "[A]",
+                                "explanation": "Verified."
+                            }
+                        ],
+                        "answer_key": [{"ans": "[A]", "exp": "Verified."}]
+                    }
+                ]
+
+            book_payload = {
+                "title": canonical_data.get("title", "Exampress Practice Book") if canonical_data else "Exampress Practice Book",
+                "chapters": processed_chapters
+            }
+
+            align_map = {0: "left", 1: "center", 2: "right"}
+            header_align_str = align_map.get(header_alignment, "left")
+            header_font_weight = "bold" if header_bold else "normal"
+            header_font_style = "italic" if header_italic else "normal"
+
+            template = self.env.get_template("template.html")
+            
+            rendered_html = template.render(
+                book=book_payload,
+                column_count=column_count,
+                format_size=format_size,
+                book_type=book_type,
+                font_size=font_size,
+                line_spacing=line_spacing,
+                question_gap=question_gap,
+                option_top_gap=option_top_gap,
+                column_gap_val=column_gap_val,
+                header_font_size=header_font_size,
+                header_font_weight=header_font_weight,
+                header_font_style=header_font_style,
+                header_align_str=header_align_str
+            )
+
+            temp_html_path = os.path.join(self.template_dir, "temp_output.html")
+            with open(temp_html_path, "w", encoding="utf-8") as f:
+                f.write(rendered_html)
+
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                page = browser.new_page()
+                
+                page.goto(f"file://{os.path.abspath(temp_html_path)}")
+                page_format = "B5" if format_size.upper() == "B5" else "A4"
+                
+                page.pdf(
+                    path=output_filename,
+                    format=page_format,
+                    print_background=True,
+                    margin={
+                        "top": f"{top_header_margin}mm", 
+                        "bottom": f"{footer_bottom_margin}mm", 
+                        "left": "20mm", 
+                        "right": "20mm"
+                    }
+                )
+                browser.close()
+                
+            if os.path.exists(temp_html_path):
+                os.remove(temp_html_path)
+
+            return output_filename
+
+        # Execute inside a thread pool executor so it behaves as a standard blocking function returning a string path
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(_run_playwright_render)
+            return future.result()
