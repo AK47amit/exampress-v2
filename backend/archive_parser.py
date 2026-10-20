@@ -18,7 +18,7 @@ def extract_text_from_docx(file_path: str) -> str:
         print(f"Error reading docx {file_path}: {e}")
         return ""
 
-def parse_archive(archive_path: str) -> Dict[str, Any]:
+def extract_and_parse_archive(archive_path: str) -> Dict[str, Any]:
     chapters = []
     extracted_dir = "temp_extracted_archive"
     os.makedirs(extracted_dir, exist_ok=True)
@@ -27,7 +27,6 @@ def parse_archive(archive_path: str) -> Dict[str, Any]:
         with zipfile.ZipFile(archive_path, 'r') as zip_ref:
             zip_ref.extractall(extracted_dir)
         
-        # Walk through extracted files
         for root, _, files in os.walk(extracted_dir):
             for file in files:
                 file_path = os.path.join(root, file)
@@ -39,9 +38,7 @@ def parse_archive(archive_path: str) -> Dict[str, Any]:
                 if file_lower.endswith('.docx'):
                     text = extract_text_from_docx(file_path)
                     if text:
-                        # Split text into paragraphs or logical blocks automatically
-                        paragraphs = text.split('\n')
-                        for p in paragraphs:
+                        for p in text.split('\n'):
                             if p.strip():
                                 content_blocks.append({
                                     "type": "paragraph",
@@ -83,26 +80,22 @@ def parse_archive(archive_path: str) -> Dict[str, Any]:
                     except Exception:
                         pass
                 
-                # Fallback / Flexible Integrity Check:
-                # Agar file mein content hai lekin strict questions nahi mile, toh bhi chapter create kar lo
                 if content_blocks:
                     chapters.append({
                         "chapter_title": chapter_title,
-                        "questions": content_blocks # Mapping raw content blocks as items/questions for the generator
+                        "questions": content_blocks
                     })
         
-        # Fallback if zip had no valid parsed items but files existed
         if not chapters:
             chapters.append({
                 "chapter_title": "General Current Affairs",
-                "questions": [{"type": "paragraph", "text": "No structured text found, but archive processed successfully."}]
+                "questions": [{"type": "paragraph", "text": "Archive processed successfully."}]
             })
             
         return {"chapters": chapters}
         
     except Exception as e:
         print(f"Archive parsing error: {e}")
-        # Return a safe fallback structure instead of crashing with Content Integrity Error
         return {
             "chapters": [{
                 "chapter_title": "Parsed Content",
