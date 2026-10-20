@@ -1,13 +1,14 @@
 import os
+import pathlib
 from pathlib import Path
 import concurrent.futures
 from jinja2 import Environment, FileSystemLoader
 from playwright.sync_api import sync_playwright
 from fastapi import HTTPException
+from pypdf import PdfMerger
 
 class PDFGenerator:
     def __init__(self, template_dir=None):
-        # Fix 1: Robust absolute template path resolution to prevent directory mismatch
         if template_dir is None:
             self.template_dir = Path(__file__).resolve().parent
         else:
@@ -15,7 +16,7 @@ class PDFGenerator:
         
         self.env = Environment(
             loader=FileSystemLoader(str(self.template_dir)),
-            autoescape=True  # Fix for security: enable autoescape as per report guidelines
+            autoescape=True
         )
 
     def generate_pdf(
@@ -67,11 +68,8 @@ class PDFGenerator:
                             continue
                         
                         q_text = block.get("text", "") or block.get("question", "")
-                        
-                        # Content Integrity: Strictly use actual parsed values, no fake fallbacks
                         ans_val = block.get("answer", "") 
                         exp_val = block.get("explanation", "").strip()
-                        
                         options = block.get("options", [])
                         
                         formatted_questions.append({
@@ -93,18 +91,14 @@ class PDFGenerator:
                             "answer_key": chap_answer_key
                         })
 
-            # Strict Content Integrity Check: Do NOT silently inject fake sample books.
             if not processed_chapters:
                 raise HTTPException(
                     status_code=400,
                     detail="Content Integrity Error: Generator received empty or invalid chapters payload. PDF rendering aborted."
                 )
 
-            book_payload = {
-                "title": canonical_data.get("title", "Exampress Practice Book") if canonical_data else "Exampress Practice Book",
-                "chapters": processed_chapters
-            }
-
+            book_title = canonical_data.get("title", "Exampress Practice Book") if canonical_data else "Exampress Practice Book"
+            
             align_map = {0: "left", 1: "center", 2: "right"}
             header_align_str = align_map.get(header_alignment, "left")
             header_font_weight = "bold" if header_bold else "normal"
@@ -112,21 +106,11 @@ class PDFGenerator:
 
             template = self.env.get_template("template.html")
             
-            rendered_html = template.render(
-                book=book_payload,
-                column_count=column_count,
-                format_size=format_size,
-                book_type=book_type,
-                font_size=font_size,
-                line_spacing=line_spacing,
-                question_gap=question_gap,
-                option_top_gap=option_top_gap,
-                column_gap_val=column_gap_val,
-                header_font_size=header_font_size,
-                header_font_weight=header_font_weight,
-                header_font_style=header_font_style,
-                header_align_str=header_align_str
-            )
+            # Chunking logic: Split chapters into batches of 3 to prevent RAM overload
+            CHUNK_SIZE = 3
+            chapter_chunks = [processed_chapters[i:i + CHUNK_SIZE] for i in range(0, len(processed_chapters), CHUNK_SIZE)]
+            
+            temp_pdf_files = []
 
             with sync_playwright() as p:
                 browser = p.chromium.launch(
@@ -140,34 +124,72 @@ class PDFGenerator:
                         "--disable-breakpad"
                     ]
                 )
-                page = browser.new_page()
                 
-                page.set_content(rendered_html, wait_until="domcontentloaded")
-                page.wait_for_timeout(1500)
-                
-                pdf_args = {
-                    "print_background": True,
-                    "margin": {
-                        "top": f"{top_header_margin}mm", 
-                        "bottom": f"{footer_bottom_margin}mm", 
-                        "left": "20mm", 
-                        "right": "20mm"
+                for idx, chunk in enumerate(chapter_chunks):
+                    chunk_payload = {
+                        "title": book_title,
+                        "chapters": chunk
                     }
-                }
 
-                # Fix 2: Explicit dimensions for B5 to prevent 'Unknown paper format: B5' error
-                if format_size.upper() == "B5":
-                    pdf_args["width"] = "176mm"
-                    pdf_args["height"] = "250mm"
-                else:
-                    pdf_args["format"] = "A4"
+                    rendered_html = template.render(
+                        book=chunk_payload,
+                        column_count=column_count,
+                        format_size=format_size,
+                        book_type=book_type,
+                        font_size=font_size,
+                        line_spacing=line_spacing,
+                        question_gap=question_gap,
+                        option_top_gap=option_top_gap,
+                        column_gap_val=column_gap_val,
+                        header_font_size=header_font_size,
+                        header_font_weight=header_font_weight,
+                        header_font_style=header_font_style,
+                        header_align_str=header_align_str
+                    )
 
-                pdf_bytes = page.pdf(**pdf_args)
+                    page = browser.new_page()
+                    page.set_content(rendered_html, wait_until="domcontentloaded")
+                    page.wait_for_timeout(1000)
+                    
+                    pdf_args = {
+                        "print_background": True,
+                        "margin": {
+                            "top": f"{top_header_margin}mm", 
+                            "bottom": f"{footer_bottom_margin}mm", 
+                            "left": "20mm", 
+                            "right": "20mm"
+                        }
+                    }
+
+                    if format_size.upper() == "B5":
+                        pdf_args["width"] = "176mm"
+                        pdf_args["height"] = "250mm"
+                    else:
+                        pdf_args["format"] = "A4"
+
+                    chunk_pdf_bytes = page.pdf(**pdf_args)
+                    page.close()
+
+                    chunk_filename = f"temp_chunk_{idx}.pdf"
+                    with open(chunk_filename, "wb") as cf:
+                        cf.write(chunk_pdf_bytes)
+                    temp_pdf_files.append(chunk_filename)
+
                 browser.close()
 
+            # Merge all chunk PDFs using pypdf
+            merger = PdfMerger()
+            for pdf_file in temp_pdf_files:
+                merger.append(pdf_file)
+
             abs_output_path = os.path.abspath(output_filename)
-            with open(abs_output_path, "wb") as f:
-                f.write(pdf_bytes)
+            merger.write(abs_output_path)
+            merger.close()
+
+            # Cleanup temporary chunk files
+            for pdf_file in temp_pdf_files:
+                if os.path.exists(pdf_file):
+                    os.remove(pdf_file)
 
             return output_filename
 
