@@ -92,11 +92,11 @@ def extract_and_parse_archive(archive_path: str, book_type: str, format_size: st
                         all_chapters.append(consolidated_chapter)
 
                 except Exception as sub_err:
-                    print(f"Error parsing inner file {file}: {str(sub_err)}")
-                    raise ValueError(f"Error parsing inner file {file}: {str(sub_err)}")
+                    # Strict Integrity Error Propagation
+                    raise ValueError(f"Error parsing inner file '{file}': {str(sub_err)}")
 
         if not all_chapters:
-            raise ValueError("No valid document files found inside the archive.")
+            raise ValueError("No valid document files with parseable question blocks found inside the archive.")
 
         master_canonical_book = {
             "title": master_title,

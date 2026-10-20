@@ -8,8 +8,11 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import User
 
-# Security configuration
-SECRET_KEY = os.getenv("SECRET_KEY", "exampress_super_secret_enterprise_key_2026")
+# Security configuration: Make SECRET_KEY mandatory in production as per audit report
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError("CRITICAL SECURITY ERROR: SECRET_KEY environment variable is missing! Application cannot start without a secure secret key.")
+
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # Token valid for 24 hours
 

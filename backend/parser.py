@@ -140,14 +140,9 @@ def parse_lines_into_blocks(lines: List[str]) -> List[QuestionBlock]:
 
     flush_block()
 
+    # Strict Content Integrity Check: Do NOT silently inject fake placeholder content.
     if not blocks:
-        blocks.append(QuestionBlock(
-            q_no=1,
-            text="Parsed document content placeholder.",
-            options=["[A] Alpha", "[B] Beta", "[C] Gamma", "[D] Delta"],
-            answer="A",
-            explanation=""
-        ))
+        raise ValueError("Parser Integrity Error: No valid question blocks could be parsed from the file lines. Please check your document formatting.")
 
     for idx, b in enumerate(blocks, 1):
         b.q_no = idx

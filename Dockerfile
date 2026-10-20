@@ -4,14 +4,11 @@ WORKDIR /app
 
 ENV PYTHONPATH=/app/backend
 
-# Install system libraries AND fonts required for Chromium PDF rendering
+# System dependencies install karo jo Chromium ke liye zaroori hain
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     wget \
     gnupg \
-    chromium \
-    fonts-liberation \
-    fontconfig \
     libglib2.0-0 \
     libnss3 \
     libnspr4 \
@@ -40,11 +37,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libx11-6 \
     libpangoft2-1.0-0 \
     libharfbuzz0b \
+    fonts-liberation \
+    fontconfig \
     && rm -rf /var/lib/apt/lists/*
 
+# Python packages install karo
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Playwright ka official chromium browser and dependencies build time par install karo
+RUN python -m playwright install chromium
+RUN python -m playwright install-deps chromium
+
+# Baaki code copy karo
 COPY . .
 
 EXPOSE 8080

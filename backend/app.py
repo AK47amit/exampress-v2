@@ -95,7 +95,7 @@ def startup_event():
 def normalize_canonical_data(canonical_data: dict, book_type: str, format_size: str, column_count: int) -> dict:
     """
     Robust Normalization Guard: Ensures that canonical_data always has a valid 'chapters' 
-    structure with 'chapter_title' and 'questions' to completely prevent Jinja template undefined errors.
+    structure. Removed silent sample question fallbacks to enforce strict Content Integrity.
     """
     if not isinstance(canonical_data, dict):
         canonical_data = {}
@@ -115,20 +115,12 @@ def normalize_canonical_data(canonical_data: dict, book_type: str, format_size: 
             "blocks": blocks
         }]
     
-    # If still no chapters, provide a safe default chapter
+    # Strict Content Integrity Check: Do NOT silently inject fake sample questions with default answers.
     if not chapters:
-        chapters = [{
-            "chapter_title": "Chapter 1: General Practice Set",
-            "blocks": [
-                {
-                    "type": "question",
-                    "text": "Sample question text?",
-                    "options": ["[A] Option 1", "[B] Option 2"],
-                    "answer": "[A]",
-                    "explanation": "Verified."
-                }
-            ]
-        }]
+        raise HTTPException(
+            status_code=400, 
+            detail="Content Integrity Error: No valid chapters or questions found in the uploaded file. Please check your source formatting."
+        )
 
     canonical_data["chapters"] = chapters
     return canonical_data

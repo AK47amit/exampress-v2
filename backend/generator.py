@@ -1,12 +1,22 @@
 import os
+from pathlib import Path
 import concurrent.futures
 from jinja2 import Environment, FileSystemLoader
 from playwright.sync_api import sync_playwright
+from fastapi import HTTPException
 
 class PDFGenerator:
-    def __init__(self, template_dir="backend"):
-        self.template_dir = template_dir
-        self.env = Environment(loader=FileSystemLoader(template_dir))
+    def __init__(self, template_dir=None):
+        # Fix 1: Robust absolute template path resolution to prevent directory mismatch
+        if template_dir is None:
+            self.template_dir = Path(__file__).resolve().parent
+        else:
+            self.template_dir = Path(template_dir).resolve()
+        
+        self.env = Environment(
+            loader=FileSystemLoader(str(self.template_dir)),
+            autoescape=True  # Fix for security: enable autoescape as per report guidelines
+        )
 
     def generate_pdf(
         self,
@@ -57,16 +67,16 @@ class PDFGenerator:
                             continue
                         
                         q_text = block.get("text", "") or block.get("question", "")
-                        ans_val = block.get("answer", "A")
+                        
+                        # Content Integrity: Strictly use actual parsed values, no fake fallbacks
+                        ans_val = block.get("answer", "") 
                         exp_val = block.get("explanation", "").strip()
-                        if not exp_val or "auto-generated" in exp_val.lower():
-                            exp_val = "Verified by editorial board."
                         
                         options = block.get("options", [])
                         
                         formatted_questions.append({
                             "question": q_text,
-                        "options": options,
+                            "options": options,
                             "answer": ans_val,
                             "explanation": exp_val
                         })
@@ -83,21 +93,12 @@ class PDFGenerator:
                             "answer_key": chap_answer_key
                         })
 
+            # Strict Content Integrity Check: Do NOT silently inject fake sample books.
             if not processed_chapters:
-                processed_chapters = [
-                    {
-                        "chapter_title": "General Practice Set",
-                        "questions": [
-                            {
-                                "question": "Sample question text?",
-                                "options": ["[A] Option 1", "[B] Option 2"],
-                                "answer": "[A]",
-                                "explanation": "Verified."
-                            }
-                        ],
-                        "answer_key": [{"ans": "[A]", "exp": "Verified."}]
-                    }
-                ]
+                raise HTTPException(
+                    status_code=400,
+                    detail="Content Integrity Error: Generator received empty or invalid chapters payload. PDF rendering aborted."
+                )
 
             book_payload = {
                 "title": canonical_data.get("title", "Exampress Practice Book") if canonical_data else "Exampress Practice Book",
@@ -128,9 +129,7 @@ class PDFGenerator:
             )
 
             with sync_playwright() as p:
-                # Use system installed chromium binary to bypass headless-shell protocol errors
                 browser = p.chromium.launch(
-                    executable_path="/usr/bin/chromium",
                     headless=True,
                     args=[
                         "--no-sandbox",
@@ -156,6 +155,7 @@ class PDFGenerator:
                     }
                 }
 
+                # Fix 2: Explicit dimensions for B5 to prevent 'Unknown paper format: B5' error
                 if format_size.upper() == "B5":
                     pdf_args["width"] = "176mm"
                     pdf_args["height"] = "250mm"
