@@ -94,9 +94,9 @@ export default function App() {
     } catch (err: any) {
       console.error(err);
       if (err.name === 'AbortError') {
-        alert('Backend request timed out. Render/Railway server might be waking up, please try again.');
+        alert('Backend request timed out. Railway server might be waking up, please try again.');
       } else {
-        alert('Error connecting to FastAPI server. Check your connection or Brave shields.');
+        alert('Error connecting to FastAPI server on Railway. Check your connection or Brave shields.');
       }
     } finally {
       setLoading(false);
@@ -387,7 +387,7 @@ export default function App() {
         {success && (
           <div className="mt-6 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center gap-3 text-emerald-800 text-sm">
             <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-600" />
-            <span>Book compiled successfully via ReportLab! PDF downloaded.</span>
+            <span>Book compiled successfully via Railway! PDF downloaded.</span>
           </div>
         )}
       </div>
