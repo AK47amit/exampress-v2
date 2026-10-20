@@ -18,7 +18,7 @@ def extract_text_from_docx(file_path: str) -> str:
         print(f"Error reading docx {file_path}: {e}")
         return ""
 
-def extract_and_parse_archive(archive_path: str) -> Dict[str, Any]:
+def extract_and_parse_archive(archive_path: str, book_type: str = "quiz", *args, **kwargs) -> Dict[str, Any]:
     chapters = []
     extracted_dir = "temp_extracted_archive"
     os.makedirs(extracted_dir, exist_ok=True)
