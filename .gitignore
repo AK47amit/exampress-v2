@@ -1,7 +1,22 @@
+# Virtual Environments & Python Cache
 backend/venv/
-backend/__pycache__/
-frontend/node_modules/
-.env
+venv/
+env/
+__pycache__/
 *.pyc
-.vercel
-.env*
+*.pyo
+*.pyd
+
+# Node & Frontend Build Outputs
+node_modules/
+dist/
+.verce/
+
+# Environment Variables & Logs
+.env
+*.log
+
+# Temp & Generated PDFs / Archives
+backend/temp_extracted_archive/
+*.pdf
+*.zip
