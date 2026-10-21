@@ -4,8 +4,6 @@ import tempfile
 import base64
 import zipfile
 import uuid
-import subprocess
-import sys
 from datetime import timedelta
 from fastapi import FastAPI, UploadFile, File, Form, Response, HTTPException, Depends, status, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -78,20 +76,6 @@ class ProjectSaveRequest(BaseModel):
     canonical_data: dict
 
 
-@app.on_event("startup")
-def startup_event():
-    """
-    Ensure Playwright chromium browser is automatically installed on container startup 
-    to permanently prevent missing executable errors in production.
-    """
-    try:
-        logger.info("Startup Event: Ensuring Playwright Chromium browser is installed...")
-        subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
-        logger.info("Playwright Chromium browser verified and ready.")
-    except Exception as e:
-        logger.error(f"Failed to auto-install Playwright browser on startup: {str(e)}")
-
-
 def normalize_canonical_data(canonical_data: dict, book_type: str, format_size: str, column_count: int) -> dict:
     """
     Robust Normalization Guard: Ensures that canonical_data always has a valid 'chapters' 
@@ -136,7 +120,7 @@ def health_check(request: Request):
         "pipeline_status": "Active",
         "modules": {
             "parser": "Operational",
-            "generator": "Operational (Playwright Chromium + Jinja2)",
+            "generator": "Operational (ReportLab 5.0.1 + uHarfBuzz)",
             "archive_extractor": "Operational",
             "pdf_preview": "Operational" if fitz else "Degraded (PyMuPDF missing)",
             "saas_auth_database": "Operational",
@@ -255,7 +239,7 @@ def background_generate_book_task(
 ):
     try:
         job_status_store[job_id] = {"status": "processing", "progress": 50}
-        logger.info(f"Background Job {job_id}: Starting Playwright PDF generation...")
+        logger.info(f"Background Job {job_id}: Starting ReportLab PDF generation...")
         
         pdf_gen = PDFGenerator()
         generate_output = pdf_gen.generate_pdf(
@@ -528,7 +512,7 @@ async def generate_book(
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_out:
             tmp_output_path = tmp_out.name
 
-        # --- PLAYWRIGHT PDF GENERATOR EXECUTION ---
+        # --- REPORTLAB PDF GENERATOR EXECUTION ---
         pdf_gen = PDFGenerator()
         output_pdf = pdf_gen.generate_pdf(
             output_filename=tmp_output_path,
@@ -555,7 +539,7 @@ async def generate_book(
         with open(output_pdf, "rb") as f:
             pdf_bytes = f.read()
             
-        logger.info(f"Book generated successfully via Playwright Engine: {book_type} ({format_size})")
+        logger.info(f"Book generated successfully via ReportLab Engine: {book_type} ({format_size})")
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
