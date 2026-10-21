@@ -123,8 +123,8 @@ class PDFGenerator:
 
             template = self.env.get_template("template.html")
             
-            # Chunking logic: Split chapters into batches of 3 to prevent RAM overload
-            CHUNK_SIZE = 3
+            # Safe Chunking: Process 1 chapter at a time to prevent print engine failure
+            CHUNK_SIZE = 1
             chapter_chunks = [processed_chapters[i:i + CHUNK_SIZE] for i in range(0, len(processed_chapters), CHUNK_SIZE)]
             
             temp_pdf_files = []
@@ -166,7 +166,7 @@ class PDFGenerator:
 
                     page = browser.new_page()
                     page.set_content(rendered_html, wait_until="domcontentloaded")
-                    page.wait_for_timeout(1000)
+                    page.wait_for_timeout(500)
                     
                     pdf_args = {
                         "print_background": True,
