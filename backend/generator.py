@@ -5,7 +5,24 @@ import concurrent.futures
 from jinja2 import Environment, FileSystemLoader
 from playwright.sync_api import sync_playwright
 from fastapi import HTTPException
-from pypdf import PdfMerger
+
+# Foolproof PDF Merger Import with multiple fallbacks
+try:
+    from pypdf import PdfMerger
+except ImportError:
+    try:
+        from PyPDF2 import PdfFileMerger as PdfMerger
+    except ImportError:
+        from pypdf import PdfWriter
+        class PdfMerger:
+            def __init__(self):
+                self.writer = PdfWriter()
+            def append(self, fileobj):
+                self.writer.append(fileobj)
+            def write(self, stream):
+                self.writer.write(stream)
+            def close(self):
+                self.writer.close()
 
 class PDFGenerator:
     def __init__(self, template_dir=None):
@@ -177,7 +194,7 @@ class PDFGenerator:
 
                 browser.close()
 
-            # Merge all chunk PDFs using pypdf
+            # Merge all chunk PDFs safely
             merger = PdfMerger()
             for pdf_file in temp_pdf_files:
                 merger.append(pdf_file)
