@@ -56,7 +56,6 @@ class PDFGenerator:
                 "pip install 'reportlab[shaping]'"
             ) from exc
 
-        # Avoid registering the same font repeatedly.
         registered = set(pdfmetrics.getRegisteredFontNames())
 
         if self.body_font not in registered:
@@ -78,11 +77,9 @@ class PDFGenerator:
                     )
                 )
         else:
-            # Use the regular Hindi font rather than a font
-            # that may not contain Devanagari glyphs.
             self.bold_font = self.body_font
 
-        # Map <b> and <i> tags to fonts that support Hindi.
+        # Ensure bold and italic markup uses Devanagari-compatible fonts.
         pdfmetrics.registerFontFamily(
             "Devanagari",
             normal=self.body_font,
@@ -91,7 +88,6 @@ class PDFGenerator:
             boldItalic=self.bold_font,
         )
 
-        # Fail early if shaping is not actually enabled.
         regular = pdfmetrics.getFont(self.body_font)
 
         if not getattr(regular, "shapable", False):
@@ -100,13 +96,24 @@ class PDFGenerator:
                 "and uharfbuzz versions."
             )
 
+        # Validate the bold font too when a separate bold font is used.
+        bold = pdfmetrics.getFont(self.bold_font)
+
+        if not getattr(bold, "shapable", False):
+            raise RuntimeError(
+                "Hindi bold font shaping is disabled. "
+                "Check the bold font registration."
+            )
+
     @staticmethod
     def _safe_text(value):
         """Convert plain input to safe Paragraph XML text."""
         if value is None:
             return ""
+
         if isinstance(value, (dict, list, tuple)):
             value = str(value)
+
         return escape(str(value))
 
     @staticmethod
@@ -122,6 +129,7 @@ class PDFGenerator:
                 or option.get("option")
                 or ""
             )
+
         return option if option is not None else ""
 
     def generate_pdf(
@@ -145,8 +153,12 @@ class PDFGenerator:
         header_italic=False,
         header_alignment=0,
     ):
-        # 1. Normalize and validate the incoming data.
-        data = canonical_data if isinstance(canonical_data, dict) else book_data
+        # 1. Normalize and validate incoming data.
+        data = (
+            canonical_data
+            if isinstance(canonical_data, dict)
+            else book_data
+        )
 
         if not isinstance(data, dict):
             raise HTTPException(
@@ -154,17 +166,35 @@ class PDFGenerator:
                 detail="Content Integrity Error: Missing book data.",
             )
 
-        # Do not mutate the caller's canonical_data.
+        # Do not mutate the caller's canonical data.
         data = dict(data)
 
-        column_count = int(data.get("column_count", column_count))
-        format_size = str(data.get("format_size", format_size)).upper()
-        book_type = data.get("book_type", book_type)
+        try:
+            column_count = int(data.get("column_count", column_count))
+            format_size = str(
+                data.get("format_size", format_size)
+            ).upper()
+            font_size = float(font_size)
+            line_spacing = float(line_spacing)
+            header_font_size = float(header_font_size)
+            question_gap = float(question_gap)
+            option_top_gap = float(option_top_gap)
+            option_vertical_gap = float(option_vertical_gap)
+            column_gap_val = float(column_gap_val)
+            footer_bottom_margin = float(footer_bottom_margin)
+            top_header_margin = float(top_header_margin)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid PDF layout setting: {exc}",
+            ) from exc
 
+        book_type = data.get("book_type", book_type)
         chapters = data.get("chapters") or []
 
         if not chapters:
             blocks = data.get("blocks", data.get("questions", []))
+
             if blocks:
                 chapters = [
                     {
@@ -182,16 +212,39 @@ class PDFGenerator:
                 ),
             )
 
-        if column_count < 1 or column_count > 4:
+        if not 1 <= column_count <= 4:
             raise HTTPException(
                 status_code=400,
                 detail="column_count must be between 1 and 4.",
             )
 
-        if font_size <= 0 or line_spacing <= 0:
+        if (
+            font_size <= 0
+            or line_spacing <= 0
+            or header_font_size <= 0
+        ):
             raise HTTPException(
                 status_code=400,
-                detail="font_size and line_spacing must be positive.",
+                detail=(
+                    "font_size, line_spacing and header_font_size "
+                    "must be positive."
+                ),
+            )
+
+        if (
+            min(
+                question_gap,
+                option_top_gap,
+                option_vertical_gap,
+                column_gap_val,
+                footer_bottom_margin,
+                top_header_margin,
+            )
+            < 0
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Layout gaps and margins cannot be negative.",
             )
 
         # 2. Resolve page size.
@@ -216,8 +269,8 @@ class PDFGenerator:
         usable_height = (
             page_height
             - (2 * margin)
-            - float(footer_bottom_margin)
-            - float(top_header_margin)
+            - footer_bottom_margin
+            - top_header_margin
         )
 
         if usable_width <= 0 or usable_height <= 0:
@@ -226,7 +279,6 @@ class PDFGenerator:
                 detail="Margins leave no usable page area.",
             )
 
-        column_gap_val = float(column_gap_val)
         col_width = (
             usable_width - ((column_count - 1) * column_gap_val)
         ) / column_count
@@ -244,7 +296,7 @@ class PDFGenerator:
 
             frame = Frame(
                 col_x,
-                margin + float(footer_bottom_margin),
+                margin + footer_bottom_margin,
                 col_width,
                 usable_height,
                 id=f"col_{i + 1}",
@@ -253,6 +305,7 @@ class PDFGenerator:
                 topPadding=0,
                 bottomPadding=0,
             )
+
             frames.append(frame)
 
         # 4. Prepare the output path.
@@ -287,46 +340,55 @@ class PDFGenerator:
             1: TA_CENTER,
             2: TA_RIGHT,
         }
+
         alignment = alignment_map.get(header_alignment, TA_LEFT)
 
-        title_font = self.bold_font if header_bold else self.body_font
+        title_font = (
+            self.bold_font if header_bold else self.body_font
+        )
 
+        # IMPORTANT: shaping=1 enables complex-script shaping
+        # for Devanagari in ReportLab Paragraph rendering.
         title_style = ParagraphStyle(
             "BookTitle",
             fontName=title_font,
-            fontSize=float(header_font_size) + 4,
-            leading=float(header_font_size) + 7,
+            fontSize=header_font_size + 4,
+            leading=header_font_size + 7,
             alignment=alignment,
             textColor=colors.HexColor("#1e293b"),
             wordWrap="LTR",
+            shaping=1,
         )
 
         chapter_style = ParagraphStyle(
             "ChapterTitle",
             fontName=self.bold_font,
-            fontSize=float(header_font_size),
-            leading=float(header_font_size) + 5,
+            fontSize=header_font_size,
+            leading=header_font_size + 5,
             alignment=alignment,
             textColor=colors.HexColor("#0f766e"),
             wordWrap="LTR",
+            shaping=1,
         )
 
         question_style = ParagraphStyle(
             "QuestionText",
             fontName=self.body_font,
-            fontSize=float(font_size),
-            leading=float(line_spacing),
+            fontSize=font_size,
+            leading=line_spacing,
             textColor=colors.HexColor("#334155"),
             wordWrap="LTR",
+            shaping=1,
         )
 
         option_style = ParagraphStyle(
             "OptionText",
             fontName=self.body_font,
-            fontSize=float(font_size),
-            leading=float(line_spacing),
+            fontSize=font_size,
+            leading=line_spacing,
             textColor=colors.HexColor("#475569"),
             wordWrap="LTR",
+            shaping=1,
         )
 
         story = []
@@ -335,9 +397,7 @@ class PDFGenerator:
         book_title = data.get("title") or "Exampress Practice Book"
 
         if header_italic:
-            safe_title = (
-                f'<i>{self._safe_text(book_title)}</i>'
-            )
+            safe_title = f"<i>{self._safe_text(book_title)}</i>"
         else:
             safe_title = self._safe_text(book_title)
 
@@ -350,13 +410,14 @@ class PDFGenerator:
                 continue
 
             chapter_title = chapter.get("chapter_title") or "Chapter"
+
             story.append(
                 Paragraph(
                     self._safe_text(chapter_title),
                     chapter_style,
                 )
             )
-            story.append(Spacer(1, float(question_gap)))
+            story.append(Spacer(1, question_gap))
 
             blocks = chapter.get("blocks") or chapter.get("questions") or []
 
@@ -368,21 +429,20 @@ class PDFGenerator:
                     continue
 
                 question_text = self._get_question_text(block)
+
                 if not str(question_text).strip():
                     continue
 
-                # Escape user content, but keep our own markup.
-                question_number = (
-                    f"<b>Q{question_index}.</b> "
-                )
+                # Keep our own markup while escaping user-provided text.
                 question_markup = (
-                    question_number + self._safe_text(question_text)
+                    f"<b>Q{question_index}.</b> "
+                    f"{self._safe_text(question_text)}"
                 )
 
                 story.append(
                     Paragraph(question_markup, question_style)
                 )
-                story.append(Spacer(1, float(option_top_gap)))
+                story.append(Spacer(1, option_top_gap))
 
                 options = block.get("options") or []
 
@@ -400,10 +460,10 @@ class PDFGenerator:
                             Paragraph(option_markup, option_style)
                         )
                         story.append(
-                            Spacer(1, float(option_vertical_gap))
+                            Spacer(1, option_vertical_gap)
                         )
 
-                story.append(Spacer(1, float(question_gap)))
+                story.append(Spacer(1, question_gap))
 
         # 8. Build the PDF.
         try:
@@ -411,13 +471,19 @@ class PDFGenerator:
         except Exception as exc:
             raise HTTPException(
                 status_code=500,
-                detail=f"PDF generation failed: {type(exc).__name__}: {exc}",
+                detail=(
+                    f"PDF generation failed: "
+                    f"{type(exc).__name__}: {exc}"
+                ),
             ) from exc
 
         if not os.path.isfile(abs_output_path):
             raise HTTPException(
                 status_code=500,
-                detail="PDF generation finished but the output file was not found.",
+                detail=(
+                    "PDF generation finished but the output "
+                    "file was not found."
+                ),
             )
 
         return abs_output_path
